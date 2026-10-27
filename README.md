@@ -7,14 +7,16 @@ listed on [gtk-rs.org](https://gtk-rs.org/) (Fractal, Amberol, Authenticator, Sh
 Backup, Warp, Fragments, Identity, Video Trimmer, Mission Center, Podcasts, Helvum, Icon Library,
 Contrast, Solanum).
 
-Targets **gtk4 0.11 / libadwaita 0.9 / glib 0.22** (GTK 4.22, libadwaita 1.9, GNOME 50), Rust
-edition 2024, Blueprint, Meson and Flatpak.
+Tested against **gtk4 0.11 / libadwaita 0.9 / glib 0.22** (GTK 4.22, libadwaita 1.9, GNOME 50),
+Rust edition 2024, Blueprint, Meson and Flatpak. New apps from the template require that baseline;
+in existing projects on older versions, the skills tell the agent to keep the project's versions
+and verify each API against them rather than upgrade unasked.
 
 ## Skills
 
 | Skill | Use it for |
 | --- | --- |
-| [`gtk-rs-development`](skills/gtk-rs-development/SKILL.md) | Any change to a gtk-rs app: rules that apply everywhere, plus 17 topic references loaded on demand. |
+| [`gtk-rs-development`](skills/gtk-rs-development/SKILL.md) | Any change to a gtk-rs app: rules that apply everywhere, plus 20 topic references loaded on demand. |
 | [`gtk-rs-new-app`](skills/gtk-rs-new-app/SKILL.md) | Scaffolding a new app from a tested template (Meson, Cargo, Blueprint, GSettings, metainfo, Flatpak, CI). |
 | [`gtk-rs-review`](skills/gtk-rs-review/SKILL.md) | Reviewing gtk-rs code or diffs for freezes, leaks, re-entrancy panics, outdated APIs and packaging mistakes. |
 
@@ -36,6 +38,9 @@ edition 2024, Blueprint, Meson and Flatpak.
 | List views, factories, models, filters and sorters | [lists-and-models.md](skills/gtk-rs-development/references/lists-and-models.md) |
 | Adaptive libadwaita UI, dialogs, preferences, toasts | [libadwaita-ui.md](skills/gtk-rs-development/references/libadwaita-ui.md) |
 | CSS, custom drawing, layout, animations | [css-drawing-animation.md](skills/gtk-rs-development/references/css-drawing-animation.md) |
+| Document apps: open, save, unsaved changes, quit, crash recovery | [document-apps.md](skills/gtk-rs-development/references/document-apps.md) |
+| TextView/TextBuffer, Unicode offsets, undo, search, GtkSourceView | [text-editing.md](skills/gtk-rs-development/references/text-editing.md) |
+| Clipboard, drag and drop, file drops | [clipboard-and-dnd.md](skills/gtk-rs-development/references/clipboard-and-dnd.md) |
 | Accessibility and internationalisation | [accessibility-and-i18n.md](skills/gtk-rs-development/references/accessibility-and-i18n.md) |
 | Compile errors keyed by error text | [compile-traps.md](skills/gtk-rs-development/references/compile-traps.md) |
 | Deprecated APIs and their replacements | [deprecated-apis.md](skills/gtk-rs-development/references/deprecated-apis.md) |

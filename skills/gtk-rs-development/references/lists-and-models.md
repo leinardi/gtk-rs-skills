@@ -423,3 +423,4 @@ factory.connect_setup(|_, obj| {
 - `libadwaita-ui.md`: boxed lists, preference rows, status pages for empty states.
 - `async-and-threads.md`: loading items and thumbnails without blocking the UI.
 - `deprecated-apis.md`: `TreeView`, `gtk::ListStore` and their replacements.
+- `clipboard-and-dnd.md`: dragging rows (`DragSource` in `setup`) and dropping onto lists.
