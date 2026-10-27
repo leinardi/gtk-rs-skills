@@ -82,7 +82,7 @@ loop, which keeps drawing and handling input.
 
 - Lower priority: `MainContext::default().spawn_local_with_priority(glib::Priority::DEFAULT_IDLE, fut)` (fractal).
 - GIO `*_future` methods own an internal `Cancellable` and cancel the operation when the future is dropped, so
-  aborting the task that awaits them cancels the I/O too.
+  aborting the task that awaits them (and dropping its handle) cancels the I/O too.
 - `File::replace_contents_future` returns `Err((buffer, glib::Error))`; use `.map_err(|(_, e)| e)`.
 - Small synchronous GIO calls with `gio::Cancellable::NONE` on the main thread are acceptable for tiny local files
   only. Anything that can live on a network mount should use `_future` or `spawn_blocking`. identity reports that even
@@ -292,9 +292,10 @@ impl SearchPage {
 // In ObjectImpl::dispose: if let Some(task) = self.search_task.take() { task.abort(); }
 ```
 
-Why: "latest request wins" avoids stale results overwriting fresh ones. `glib::JoinHandle::abort()` drops the future
-at its next suspension point, which also cancels any GIO `*_future` it was awaiting. Awaiting an aborted handle yields
-`Err(JoinError)` with `is_cancelled() == true`.
+Why: "latest request wins" avoids stale results overwriting fresh ones. `glib::JoinHandle::abort()` stops the task
+from being polled again, but the handle keeps its source, and with it the future, alive. The future is dropped, and
+any GIO `*_future` it was awaiting is cancelled, when the **handle** is dropped too. So abort and then drop the
+handle (as above, where `previous` goes out of scope). **Never await an aborted handle: it never resolves.**
 
 Other mechanisms, by situation:
 
@@ -439,6 +440,8 @@ awaiting them reads top to bottom with no callback nesting. `Dismissed` means th
 error to report (pika-backup maps both `Cancelled` and `Dismissed` to a silent `UserCanceled`,
 `pika-backup/src/utils.rs`).
 
+- These two are the building blocks only. A real editor also needs saved-content tracking, save races, a
+  close re-entry guard and crash-recovery drafts: see `document-apps.md`.
 - Always pass the parent window. Portals use it to attach the dialog to the right window.
 - `choose_future` consumes the dialog and resolves to the response id. Set `close_response` so Escape maps to a known
   id, then compare strings.
@@ -487,6 +490,8 @@ Tau, with the old `clone!(@weak x => …)` syntax) still use them. Replace mecha
 
 ## Pitfalls
 
+- Code after `handle.await` never runs, or a cancelled download keeps going → the `glib::JoinHandle` was aborted
+  and then awaited or kept → abort, then drop the handle; never await an aborted handle.
 - UI freezes for seconds → a blocking call (sync HTTP, `std::fs` on a network mount, `block_on`) runs on the main
   thread → move it into `gio::spawn_blocking` or use a `_future` API.
 - Panic "there is no reactor running, must be called from the context of a Tokio 1.x runtime" → a tokio-based future
