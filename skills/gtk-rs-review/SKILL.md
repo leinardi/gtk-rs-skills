@@ -50,7 +50,9 @@ conditions (Flatpak, Devel build, slow disk, re-entrancy); **modernise** = outda
 
 ### GObject structure (`references/gobject.md`)
 
-- Overrides that do not chain up (`parent_constructed`, `parent_startup`, `parent_dispose`, ...). → bug
+- Overrides that do not chain up (`parent_constructed`, `parent_startup`, `parent_close_request`, ...). → bug
+  `dispose` is the exception: glib chains it to the parent itself and there is no `parent_dispose()`, so do not
+  report its absence (and flag any attempt to add one).
 - `glib::wrapper!` missing ancestors/interfaces. → bug
 - Hand-written property boilerplate, `set_data`, `once_cell`/`lazy_static`, `RefCell<Option<T>>` for set-once
   fields. → modernise
@@ -85,7 +87,8 @@ conditions (Flatpak, Devel build, slow disk, re-entrancy); **modernise** = outda
 
 - gresource prefix ≠ `resource-base-path` (style.css/shortcuts dialog/icons silently not loaded), especially with a
   `.Devel` app id. → bug
-- Schema id not tied to the app id (Devel and release share settings), schema keys used but not declared. → bug
+- Schema id or schema path not tied to the app id (dconf keys values by path, so Devel and release share
+  settings), schema keys used but not declared. → bug
 - Blueprint `custom_target(output: '.')` (ninja race); new `.blp` not listed in Meson/gresource. → risk
 - Crate version features newer than the Flatpak runtime / Meson `dependency()` checks, or out of sync with each other. → bug
 - Over-broad Flatpak permissions (`--filesystem=host`, `--device=all`, `--socket=session-bus`) without a comment
