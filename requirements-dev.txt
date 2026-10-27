@@ -1,0 +1,10 @@
+# Development dependencies only: the skills and the generator need nothing beyond python3 >= 3.12
+# and its standard library.
+#
+# ruff and mypy are pinned by rev in .pre-commit-config.yaml and run in pre-commit's own
+# environments, so they are not listed here.
+#
+# Install with: make dev-deps
+pytest==9.1.1
+# Derives the next release version from the Conventional Commits (.cz.toml, release.yaml).
+commitizen==4.18.0

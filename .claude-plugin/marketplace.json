@@ -1,0 +1,17 @@
+{
+  "$schema": "https://anthropic.com/claude-code/marketplace.schema.json",
+  "name": "gtk-rs-skills",
+  "description": "Skills for building modern GTK 4 + libadwaita apps in Rust.",
+  "owner": {
+    "name": "Roberto Leinardi",
+    "url": "https://github.com/leinardi"
+  },
+  "plugins": [
+    {
+      "name": "gtk-rs-skills",
+      "description": "gtk-rs development guide, new-app scaffolding and code review skills.",
+      "source": "./",
+      "category": "development"
+    }
+  ]
+}

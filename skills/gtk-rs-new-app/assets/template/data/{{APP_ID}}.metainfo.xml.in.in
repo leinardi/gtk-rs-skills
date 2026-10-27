@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>@app-id@</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>{{LICENSE}}</project_license>
+  <name>{{APP_NAME}}</name>
+  <summary>{{SUMMARY}}</summary>
+  <description>
+    <p>{{SUMMARY}}.</p>
+  </description>
+  <developer id="{{DEVELOPER_ID}}">
+    <name translate="no">{{DEVELOPER}}</name>
+  </developer>
+  <launchable type="desktop-id">@app-id@.desktop</launchable>
+  <translation type="gettext">@gettext-package@</translation>
+  <url type="homepage">{{HOMEPAGE}}</url>
+  <url type="bugtracker">{{HOMEPAGE}}/issues</url>
+  <url type="vcs-browser">{{HOMEPAGE}}</url>
+  <content_rating type="oars-1.1" />
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+  <branding>
+    <color type="primary" scheme_preference="light">#99c1f1</color>
+    <color type="primary" scheme_preference="dark">#1a5fb4</color>
+  </branding>
+  <releases>
+    <release version="0.1.0" date="{{DATE}}">
+      <description translate="no">
+        <p>Initial release.</p>
+      </description>
+    </release>
+  </releases>
+</component>

@@ -1,0 +1,9 @@
+# Files with translatable strings, one per line, sorted.
+data/{{APP_ID}}.desktop.in.in
+data/{{APP_ID}}.gschema.xml.in
+data/{{APP_ID}}.metainfo.xml.in.in
+data/resources/ui/shortcuts-dialog.blp
+data/resources/ui/window.blp
+src/application.rs
+src/main.rs
+src/window.rs

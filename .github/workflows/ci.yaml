@@ -1,0 +1,373 @@
+name: CI
+
+# The authoritative checks (pre-commit-all, test, template-check) run on every pull request, every push
+# to main and every dispatch; the reviewdog jobs only annotate pull requests. ci-result is the one
+# job that stands for all of them.
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
+  cancel-in-progress: true
+
+# Every job reads the repository and nothing else, unless it says otherwise below.
+permissions:
+  contents: read
+
+jobs:
+  # The authoritative lint gate: every pre-commit hook over every file, with the versions pinned in
+  # .pre-commit-config.yaml. The reviewdog jobs below only annotate a pull request's diff.
+  pre-commit-all:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      # The node hooks (markdownlint-cli2, prettier-yaml) build their environments on the
+      # runner's node rather than downloading one.
+      - name: Set up Node
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "24"
+
+      - name: Install pre-commit
+        run: pip install --no-cache-dir pre-commit==4.6.2
+
+      # Restore only: pre-commit-warmup.yaml saves the entry on main under the same key.
+      - name: Restore the pre-commit cache
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/pre-commit
+          key: pre-commit|${{ runner.os }}|${{ hashFiles('.pre-commit-config.yaml') }}
+
+      - name: Run every pre-commit hook on every file
+        run: pre-commit run --all-files --show-diff-on-failure
+
+      # pre-commit fails a hook that modifies a tracked file, which covers the auto-fixing hooks
+      # (markdownlint fix, prettier, ruff format); this also fails on a file a hook creates, which
+      # its diff check does not see, so no fix can pass silently.
+      - name: Fail if a hook modified a file
+        run: |
+          git diff --exit-code
+          test -z "$(git status --porcelain)"
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: python -m pip install --disable-pip-version-check -r requirements-dev.txt
+
+      - name: Run the generator unit tests
+        run: make test
+
+  # Generates an app from the new-app template and builds it the way a user would: flatpak-builder
+  # on the generated Devel manifest (GNOME 50 SDK), which runs `meson test` (cargo test plus the
+  # desktop, metainfo and schema validation) inside the sandbox, then clippy in the module's build
+  # shell. The runner's own GTK is older than the template targets, hence the SDK container.
+  template-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate the sample app
+        run: |
+          python3 -I skills/gtk-rs-new-app/scripts/new_app.py \
+            --app-id io.github.example.TemplateCheck --name "Template Check" \
+            --crate template-check --dest _template-check
+
+      - name: Build and test the sample app with flatpak-builder
+        uses: flatpak/flatpak-github-actions/flatpak-builder@79327416609af08178ad73b352877e51450790b3 # v6.8
+        with:
+          manifest-path: _template-check/build-aux/io.github.example.TemplateCheck.Devel.json
+          bundle: template-check.flatpak
+          cache-key: template-check-${{ hashFiles('skills/gtk-rs-new-app/assets/template/**') }}
+          upload-artifact: false
+
+      - name: Run clippy in the SDK build shell
+        working-directory: _template-check
+        run: |
+          flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --keep-build-dirs \
+            --stop-at=template-check flatpak_app build-aux/io.github.example.TemplateCheck.Devel.json
+          flatpak build-finish --share=network flatpak_app
+          echo "cd .. && cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings" | \
+            flatpak-builder --user --disable-rofiles-fuse \
+            --build-shell=template-check flatpak_app build-aux/io.github.example.TemplateCheck.Devel.json
+
+  actionlint:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run actionlint via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/actionlint@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  pre-commit-hooks:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      # The action's default list plus the hooks this repository adds to pre-commit-hooks.
+      - name: Run pre-commit hooks + reviewdog diff
+        uses: leinardi/gha-pre-commit-reviewdog-actions/pre-commit-hooks@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          hooks: |
+            check-merge-conflict
+            end-of-file-fixer
+            trailing-whitespace
+            check-yaml
+            check-json
+            check-toml
+            check-added-large-files
+            check-executables-have-shebangs
+            check-shebang-scripts-are-executable
+
+  markdownlint:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run markdownlint-cli2 via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/markdownlint-cli2@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  mypy:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run mypy via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/mypy@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  ruff:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run ruff via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/ruff@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  shellcheck:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run shellcheck via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/shellcheck@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  yamllint:
+    # Reports inline PR review comments over a diff range; a manual dispatch has
+    # neither a pull request to comment on nor a base ref to diff against.
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
+    # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
+    # creates no check runs, so checks: write is not needed.
+    permissions:
+      contents: read
+      pull-requests: write
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Run yamllint via pre-commit + reviewdog
+        uses: leinardi/gha-pre-commit-reviewdog-actions/yamllint@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha }}
+          to-ref: ${{ github.event.pull_request.head.sha }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+
+  conventional-commits:
+    # commitizen derives the release version from the commit types since the last tag, so a
+    # commit nobody can classify is a release nobody can version. The local commit-msg hook only
+    # runs where `make pre-commit-install` was run; this job is the check that no commit skips.
+    # It runs the repository's own conventional-pre-commit hook, so --force-scope applies here
+    # too, and it skips merge commits. No pull-request title check: squash merging is disabled,
+    # so a title never becomes a commit on main.
+    #
+    # Unlike the reviewdog jobs, this one also runs on workflow_dispatch: release.yaml opens its
+    # bump pull request with GITHUB_TOKEN and dispatches this workflow on the bump branch, so the
+    # check reports on that pull request even if its pull_request event never fires. A dispatch
+    # checks the commits between main and the dispatched ref. On a push to main the commits were
+    # already checked on their pull request, so it is skipped there.
+    if: github.event_name != 'push'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Validate the commit messages
+        uses: leinardi/gha-pre-commit-reviewdog-actions/conventional-commits@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        with:
+          from-ref: ${{ github.event.pull_request.base.sha || 'origin/main' }}
+          to-ref: ${{ github.event.pull_request.head.sha || 'HEAD' }}
+
+  # The one required check that stands for the rest: GitHub counts a skipped required job as passing,
+  # so this job runs always and decides. Every needed job must succeed, except that on a push
+  # conventional-commits is skipped by design.
+  ci-result:
+    if: always()
+    needs:
+      - pre-commit-all
+      - test
+      - template-check
+      - conventional-commits
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: Check the needed jobs
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          set -euo pipefail
+          failed="$(jq -r --arg event "${EVENT}" '
+            to_entries[]
+            | select(.value.result != "success")
+            | select(
+                (
+                  $event == "push"
+                  and .key == "conventional-commits"
+                  and .value.result == "skipped"
+                ) | not
+              )
+            | "\(.key): \(.value.result)"
+          ' <<<"${NEEDS}")"
+          if [[ -n "${failed}" ]]; then
+            echo "::error::Needed jobs did not succeed:"
+            echo "${failed}"
+            exit 1
+          fi
+          echo "Every needed job succeeded."
