@@ -575,6 +575,10 @@ async fn finish_close(&self, discarding: bool) -> CloseFlow {
             return CloseFlow::Idle;
         }
     }
+    // Again after the last await: a paste or a plugin may have edited during the dialog.
+    if document.revision() != revision {
+        return CloseFlow::Idle;
+    }
     CloseFlow::Approved
 }
 
@@ -620,7 +624,7 @@ Every branch ends in a defined state:
 | Discard | draft deleted and **awaited**, then `Approved` and `close()` |
 | Discard, deleting the draft failed | "Close Anyway?" (else `Idle`, window open) |
 | Save, success, document clean | draft deleted and awaited, then `close()` (a failed delete is only logged: the draft repeats the file) |
-| Edited while the draft is being deleted | `Idle`, window open, edits kept |
+| Edited while the draft is being deleted, or while "Close Anyway?" is up | `Idle`, window open, edits kept |
 | Save, failure | error shown, `Idle`, window open, draft kept |
 | Save, Save As cancelled | silent, `Idle`, window open |
 | Save, edited while saving | `Idle`, window open (still modified) |
@@ -696,8 +700,10 @@ Every draft write and delete for a document goes through **one queue**:
   acknowledgement carrying the delete's `Result` (a missing draft counts as success). The close
   flow approves only after the draft is gone, or after the user accepted that it could not be
   removed, and closing the last window cannot end the process with a delete still queued.
-- **Re-check after awaiting.** The user can type while the delete runs. `finish_close` compares
-  the revision before and after and keeps the window open if it changed.
+- **Re-check after every await.** The user, a paste or a plugin can change the document while the
+  delete runs and while the "Close Anyway?" dialog is up. `finish_close` compares the revision
+  again immediately before approving, after the last await, and keeps the window open if it
+  changed.
 - **Retention.** Delete a draft when the document becomes clean (a successful save, or undo back
   to the saved content: `clear()` in `update_modified`, §1) or on an explicit Discard. A failed or
   cancelled save keeps it.
@@ -962,6 +968,8 @@ add an artificial delay before the write to widen races.
 - A failed Save As, then an external change to the original, then Save → `WrongEtag`.
 - Discard with a draft that cannot be deleted (read-only drafts dir) → "Close Anyway?"; Cancel
   keeps the window and the draft.
+- An edit arriving while "Close Anyway?" is up (a delayed paste), then "Close Anyway" → the
+  window stays open with the edit.
 - Ctrl+Q with a modified window: the app keeps running until the dialog is answered.
 - Discard while an autosave write is in flight and the last window closes: the process stays
   alive until the delete is acknowledged, and the next start finds no draft.
@@ -991,8 +999,9 @@ add an artificial delay before the write to widen races.
   together on success.
 - **Text typed while a file loads is replaced, and the document reads clean** → only another
   open was checked → capture the revision before the read and refuse to apply if it changed.
-- **Window closes although the user typed during the draft cleanup** → close approved from a
-  dirty check taken before the await → re-check the revision after the cleanup.
+- **Window closes although the document changed during the draft cleanup or its error dialog** →
+  close approved from a check taken before an await → re-check the revision after the last
+  await, immediately before approving.
 - **Discarded text is offered for recovery after "Discard"** → a failed draft delete was
   acknowledged as success → send the delete's `Result` back and ask before closing.
 - **A discarded draft reappears after restart** → delete raced an in-flight autosave, or the

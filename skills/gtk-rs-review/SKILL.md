@@ -83,7 +83,7 @@ conditions (Flatpak, Devel build, slow disk, re-entrancy); **modernise** = outda
 - A load applied after the user typed during the read (only another open is checked, not the revision). → bug
 - Recovery drafts in the cache dir; draft writes and deletes not serialized; Discard or the last window closing
   without awaiting the draft delete or holding the app until it ran; a failed delete acknowledged as success; the
-  close approved without re-checking for edits made while the cleanup was awaited. → bug
+  close approved without re-checking for edits after the last await (cleanup or its error dialog). → bug
 - `TextBuffer`/`TextIter` captured into a worker; iters kept across edits or `.await`; GTK char offsets mixed with
   Rust byte indices. → bug
 - Large-text search on the main thread, or in `spawn_blocking` without a cancel flag checked inside the scan, or
