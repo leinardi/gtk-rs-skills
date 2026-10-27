@@ -14,7 +14,7 @@
   <launchable type="desktop-id">@app-id@.desktop</launchable>
   <translation type="gettext">@gettext-package@</translation>
   <url type="homepage">{{HOMEPAGE}}</url>
-  <url type="bugtracker">{{HOMEPAGE}}/issues</url>
+  <url type="bugtracker">{{BUGTRACKER}}</url>
   <url type="vcs-browser">{{HOMEPAGE}}</url>
   <content_rating type="oars-1.1" />
   <requires>

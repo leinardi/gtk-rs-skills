@@ -42,12 +42,70 @@ import re
 import shutil
 import subprocess
 import sys
+import urllib.parse
+from collections.abc import Callable
 from pathlib import Path
 
 TEMPLATE_DIR = Path(__file__).resolve().parent.parent / "assets" / "template"
 
 APP_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*){2,}$")
 CRATE_RE = re.compile(r"^[a-z][a-z0-9-]*$")
+DEVELOPER_ID_RE = re.compile(r"^[A-Za-z][A-Za-z0-9_-]*(\.[A-Za-z0-9_-]+)+$")
+LICENSE_RE = re.compile(r"^[A-Za-z0-9.+() -]+$")
+MESON_VAR_RE = re.compile(r"@[-a-zA-Z0-9_]+@")
+
+# Free-text values (name, summary, developer) may contain any printable character, and a homepage
+# URL may contain `&` and the like in its query. They land in string literals of several languages,
+# so each file kind gets its own escaping; every other token is validated to a character set that
+# needs none.
+FREE_TEXT_TOKENS = frozenset({"APP_NAME", "SUMMARY", "DEVELOPER"})
+ESCAPED_TOKENS = FREE_TEXT_TOKENS | {"HOMEPAGE", "BUGTRACKER"}
+
+
+def escape_double_quoted(value: str) -> str:
+    """Rust, TOML basic strings and Blueprint strings share the backslash/double-quote escapes."""
+    return value.replace("\\", "\\\\").replace('"', '\\"')
+
+
+def escape_xml(value: str) -> str:
+    return value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;").replace("'", "&apos;")
+
+
+def escape_desktop_entry(value: str) -> str:
+    # Desktop Entry spec: backslash starts an escape sequence in string values.
+    return value.replace("\\", "\\\\")
+
+
+def is_valid_homepage(url: str) -> bool:
+    """An absolute http(s) URL with a host; query and fragment may hold anything printable (escaped per file kind)."""
+    if any(char.isspace() or not char.isprintable() for char in url):
+        return False
+    try:
+        parts = urllib.parse.urlsplit(url)
+        _ = parts.port  # raises ValueError on a malformed port
+    except ValueError:
+        return False
+    return parts.scheme in {"http", "https"} and bool(parts.hostname)
+
+
+def bugtracker_url(homepage: str) -> str:
+    """`<homepage path>/issues`, without the homepage's query or fragment (the forge convention)."""
+    try:
+        parts = urllib.parse.urlsplit(homepage)
+    except ValueError:
+        return homepage  # validate() rejects it before anything is written
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path.rstrip("/") + "/issues", "", ""))
+
+
+def escaper_for(path: Path) -> Callable[[str], str]:
+    name = path.name
+    if name.endswith((".rs", ".toml", ".blp")):
+        return escape_double_quoted
+    if ".xml" in name:
+        return escape_xml
+    if ".desktop" in name:
+        return escape_desktop_entry
+    return lambda value: value
 
 
 def camel_case(text: str) -> str:
@@ -80,21 +138,41 @@ def build_tokens(args: argparse.Namespace) -> dict[str, str]:
         "DEVELOPER": args.developer,
         "DEVELOPER_ID": developer_id,
         "HOMEPAGE": args.homepage,
+        "BUGTRACKER": bugtracker_url(args.homepage),
         "LICENSE": args.license,
         "DATE": datetime.datetime.now(datetime.UTC).date().isoformat(),
     }
 
 
-def substitute(text: str, tokens: dict[str, str]) -> str:
+def substitute(text: str, tokens: dict[str, str], escape: Callable[[str], str] | None = None) -> str:
     for key, value in tokens.items():
-        text = text.replace("{{" + key + "}}", value)
+        replacement = escape(value) if escape is not None and key in ESCAPED_TOKENS else value
+        text = text.replace("{{" + key + "}}", replacement)
     return text
+
+
+def validate(args: argparse.Namespace, tokens: dict[str, str]) -> None:
+    for key in FREE_TEXT_TOKENS:
+        if not tokens[key].strip() or any(not char.isprintable() for char in tokens[key]):
+            sys.exit(f"error: {key.lower().replace('_', '-')} must be non-empty printable text on one line")
+        # Meson's configure_file() would replace it with a (missing) configuration variable.
+        if MESON_VAR_RE.search(tokens[key]):
+            sys.exit(f"error: {key.lower().replace('_', '-')} must not contain an @word@ sequence (Meson substitutes it)")
+    if not DEVELOPER_ID_RE.match(tokens["DEVELOPER_ID"]):
+        sys.exit(f"error: {tokens['DEVELOPER_ID']!r} is not a valid developer id (reverse DNS, e.g. io.github.alice)")
+    if not is_valid_homepage(args.homepage):
+        sys.exit(f"error: {args.homepage!r} is not a valid http(s) URL")
+    if MESON_VAR_RE.search(args.homepage):
+        sys.exit("error: homepage must not contain an @word@ sequence (Meson substitutes it)")
+    if not LICENSE_RE.match(args.license):
+        sys.exit(f"error: {args.license!r} is not a valid SPDX license expression")
 
 
 def format_rust_sources(dest: Path) -> None:
     """Run rustfmt on the generated sources, so `cargo fmt --check` passes whatever the substituted values' lengths.
 
-    Best effort: without rustfmt the project is still generated, and the first `cargo fmt` fixes the layout.
+    Without rustfmt the project is still generated, and the first `cargo fmt` fixes the layout. A rustfmt
+    failure means the generated Rust does not parse, which is a generator bug, so it fails the run.
     """
     rustfmt = shutil.which("rustfmt")
     sources = sorted(str(path.relative_to(dest)) for path in (dest / "src").glob("*.rs"))
@@ -103,7 +181,7 @@ def format_rust_sources(dest: Path) -> None:
         return
     result = subprocess.run([rustfmt, "--edition", "2024", *sources], cwd=dest, capture_output=True, text=True, check=False)
     if result.returncode != 0:
-        print(f"warning: rustfmt failed, run `cargo fmt` in the new project:\n{result.stderr}", file=sys.stderr)
+        sys.exit(f"error: the generated Rust sources do not parse (rustfmt failed):\n{result.stderr}")
 
 
 def main() -> None:
@@ -126,6 +204,7 @@ def main() -> None:
         sys.exit(f"error: {dest} exists and is not empty")
 
     tokens = build_tokens(args)
+    validate(args, tokens)
     for source in sorted(TEMPLATE_DIR.rglob("*")):
         relative = source.relative_to(TEMPLATE_DIR)
         target = dest / substitute(str(relative), tokens)
@@ -133,7 +212,7 @@ def main() -> None:
             target.mkdir(parents=True, exist_ok=True)
             continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(substitute(source.read_text(encoding="utf-8"), tokens), encoding="utf-8")
+        target.write_text(substitute(source.read_text(encoding="utf-8"), tokens, escaper_for(source)), encoding="utf-8")
         shutil.copymode(source, target)
 
     leftovers = [
