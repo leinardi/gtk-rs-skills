@@ -81,6 +81,11 @@ template-check: template-generate ## Generate the sample app, lint it and build/
 .PHONY: template-flatpak
 template-flatpak: template-generate ## Generate the sample app and build/test it with flatpak-builder (GNOME 50 SDK)
 	@cd "$(TEMPLATE_CHECK_DIR)" && flatpak-builder --user --install-deps-from=flathub --force-clean \
-	  _flatpak build-aux/$(TEMPLATE_CHECK_APP_ID).Devel.json
+	  _flatpak build-aux/$(TEMPLATE_CHECK_APP_ID).Devel.json > _flatpak.log 2>&1 \
+	  || { tail -n 50 _flatpak.log >&2; exit 1; }
+	@# flatpak-builder only warns about unknown manifest properties and then ignores them.
+	@if grep -q 'Unknown property' "$(TEMPLATE_CHECK_DIR)/_flatpak.log"; then \
+	  grep 'Unknown property' "$(TEMPLATE_CHECK_DIR)/_flatpak.log" >&2; exit 1; \
+	fi
 
 endif  # MK_LOCAL_TEST_INCLUDED
