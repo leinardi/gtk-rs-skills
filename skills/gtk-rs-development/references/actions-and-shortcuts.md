@@ -43,10 +43,11 @@ The scaffold registers them in `startup`, which runs once per process (not on ev
 fn setup_actions(&self) {
     let quit = gio::ActionEntry::builder("quit")
         .activate(|app: &Self, _, _| {
+            // Not app.quit(): that skips close-request. Closing the windows lets each one save
+            // its state or veto (unsaved changes); the app exits when the last one is gone.
             for window in app.windows() {
-                window.close(); // lets windows save state in close_request
+                window.close();
             }
-            app.quit();
         })
         .build();
     let preferences = gio::ActionEntry::builder("preferences")
@@ -403,3 +404,4 @@ gio::prelude::ActionGroupExt::change_action_state(&app, "spell-check", &false.to
 - `accessibility-and-i18n.md`: keyboard reachability, translator comments for menu labels.
 - `compile-traps.md`: E0034 and other trait-ambiguity errors.
 - `deprecated-apis.md`: `GtkShortcutsWindow` and other replaced APIs.
+- `document-apps.md`: `win.open`/`win.save`/`win.save-as` and a quit that windows can veto.

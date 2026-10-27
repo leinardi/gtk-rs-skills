@@ -141,7 +141,7 @@ impl Window {
 
 - Use `default_size()`, not `width()`/`height()`. It is the unmaximized size, which is what you want to restore. Saving the allocated size of a maximized window makes "unmaximize" do nothing.
 - Save once in `close_request`, not on every `notify::default-width`. Notify-based saving (mission-center) writes dconf on every resize step.
-- Window state is lost on Ctrl+Q unless `app.quit` closes the windows first. See `architecture.md` §4.
+- Window state is lost on Ctrl+Q unless `app.quit` closes the windows instead of calling `quit()`. See `architecture.md` §4.
 - Binding `default-width` directly with `settings.bind` looks tempting, but it captures maximized sizes and fires during resizes; no corpus app does it.
 - Multi-window apps usually persist only the last-closed window's size. Per-document geometry belongs in your own state file (§7).
 
@@ -294,7 +294,7 @@ What to change for production: write atomically (§7) instead of `File::create`,
 - **Devel and stable builds overwrite each other's settings** → hard-coded schema ID or a shared schema path (dconf keys values by path) → template both from the application id (`@app-id@`, `@app-path@`) and construct with `config::APP_ID`.
 - **Tests change the developer's real preferences** → no memory backend → `GSETTINGS_BACKEND=memory`.
 - **Restored window is huge after unmaximizing** → saved `width()` instead of `default_size()`.
-- **Window size not saved on Ctrl+Q** → `quit()` skipped `close-request` → close the windows first.
+- **Window size not saved on Ctrl+Q** → `quit()` skipped `close-request` → close the windows instead of calling `quit()`.
 - **Settings handler fires after the window closed** → `connect_changed` on the shared settings with a strong capture, never disconnected → `#[weak]` + disconnect in `dispose`, or use `bind`.
 - **Data file empty after a crash** → non-atomic write → `glib::file_set_contents` / `replace_contents_future`.
 - **"Type mismatch" panic from `settings.get::<T>()`** → Rust type doesn't match the key's GVariant type (e.g. `i32` for a `u` key) → match the schema type.

@@ -63,12 +63,12 @@ impl Application {
     fn setup_actions(&self) {
         let quit = gio::ActionEntry::builder("quit")
             .activate(|app: &Self, _, _| {
-                // quit() alone skips close-request, so close the windows first to let
-                // them save their state.
+                // Close the windows instead of calling quit(): quit() skips close-request,
+                // so windows could not save their state or veto (unsaved changes). The
+                // application exits by itself once its last window is gone.
                 for window in app.windows() {
                     window.close();
                 }
-                app.quit();
             })
             .build();
         let about = gio::ActionEntry::builder("about")
