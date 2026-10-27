@@ -77,10 +77,13 @@ conditions (Flatpak, Devel build, slow disk, re-entrancy); **modernise** = outda
   → bug
 - Dirty state from `TextBuffer::is_modified()`/`set_modified(false)` or from a revision counter; "saved" not
   recorded when a save raced an edit; a custom undo savepoint stored as a stack depth. → bug
-- Overlapping saves of one document; `file` set before a Save As succeeded; a cancelled file dialog reported as an
-  error, or a failed save not shown. → bug
+- Overlapping saves of one document; `file` or the etag changed before a Save As succeeded (a failed Save As then
+  loses conflict detection on the original); a cancelled file dialog reported as an error, or a failed save not
+  shown. → bug
+- A load applied after the user typed during the read (only another open is checked, not the revision). → bug
 - Recovery drafts in the cache dir; draft writes and deletes not serialized; Discard or the last window closing
-  without awaiting the draft delete or holding the app until it ran. → bug
+  without awaiting the draft delete or holding the app until it ran; a failed delete acknowledged as success; the
+  close approved without re-checking for edits made while the cleanup was awaited. → bug
 - `TextBuffer`/`TextIter` captured into a worker; iters kept across edits or `.await`; GTK char offsets mixed with
   Rust byte indices. → bug
 - Large-text search on the main thread, or in `spawn_blocking` without a cancel flag checked inside the scan, or
