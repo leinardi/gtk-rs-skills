@@ -75,8 +75,10 @@ Host requirements for Meson builds: Rust ≥ 1.92, GTK ≥ 4.22, libadwaita ≥ 
 `desktop-file-utils`, `appstream`. On Ubuntu/Debian: `sudo apt install libgtk-4-dev libadwaita-1-dev
 blueprint-compiler desktop-file-utils appstream meson`; on Fedora: `sudo dnf install gtk4-devel libadwaita-devel
 blueprint-compiler desktop-file-utils appstream meson`. If the host libraries are older, either build with Flatpak or
-lower the features in `Cargo.toml` **and** the `dependency()` checks in `meson.build` together (e.g. `gnome_48` /
-`v1_7` for GNOME 48).
+lower the scaffold's required versions: the features in `Cargo.toml`, the `dependency()` checks in `meson.build`
+and the manifest's `runtime-version` together (e.g. `gnome_48` / `v1_7` for GNOME 48). That is below the tested
+baseline, so check every API the app uses against the lower features (`cargo clippy`), and tell the user the
+template was only tested on GNOME 50 (`packaging-and-ci.md`, "Tested vs required versions").
 
 Verify the result builds before handing it over; if you cannot build (missing system libraries), say so explicitly
 and give the user the install command.

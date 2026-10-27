@@ -5,7 +5,8 @@ you are about to write an API from memory and are not sure it is still current. 
 0.x releases and much of the code on the internet (including older parts of the gtk-rs book prose)
 predates the current idioms.
 
-Baseline for "current": gtk4 0.11 / libadwaita 0.9 / glib 0.22, GTK 4.22, libadwaita 1.9.
+Baseline for "current" (the tested baseline): gtk4 0.11 / libadwaita 0.9 / glib 0.22, GTK 4.22, libadwaita 1.9.
+For a project pinned to older versions, see [Projects on older versions](#projects-on-older-versions).
 
 ## Contents
 
@@ -15,6 +16,7 @@ Baseline for "current": gtk4 0.11 / libadwaita 0.9 / glib 0.22, GTK 4.22, libadw
 - [CSS and styling](#css-and-styling)
 - [Build, packaging and ecosystem](#build-packaging-and-ecosystem)
 - [How to check whether something is deprecated](#how-to-check-whether-something-is-deprecated)
+- [Projects on older versions](#projects-on-older-versions)
 
 ## Rust bindings (glib / gtk-rs idioms)
 
@@ -117,6 +119,43 @@ Baseline for "current": gtk4 0.11 / libadwaita 0.9 / glib 0.22, GTK 4.22, libadw
 2. Build with `cargo clippy -- -D warnings`; `deprecated` warnings then fail the build.
 3. Check the C docs (docs.gtk.org/gtk4, gnome.pages.gitlab.gnome.org/libadwaita/doc/1-latest) for a
    "Deprecated since" banner; the Rust bindings follow them.
+
+## Projects on older versions
+
+The references are written and checked for the tested baseline. An existing project may target older crates, an
+older GNOME runtime or an older distribution, and those are its supported versions. Respect them.
+
+**1. Find the project's versions.** They live in several places, and all of them matter:
+
+- `Cargo.toml`: crate versions and version features (`gtk` `v4_x`/`gnome_xx`, `adw` `v1_x`/`gtk_v4_x`);
+- `Cargo.lock`: the exact crate versions whose source is in `~/.cargo/registry/src`;
+- `meson.build`: `dependency('gtk4', version: '>= …')` and friends, which are the minimum system libraries;
+- the Flatpak manifest: `runtime-version`, which is what the app actually runs on.
+
+**2. Without an authorized upgrade, adapt the guidance.**
+
+- The project's idioms win. Write code that fits its crate versions and stays within its enabled features.
+- **Verify each older equivalent in the project's exact crate source** (`~/.cargo/registry/src/*/gtk4-<its
+  version>/src/…`, `glib-macros-<its version>`) or that version's documentation, then `cargo check`. Don't infer
+  it.
+- **Don't read the table above in reverse.** It is migration context, not a version map: it mixes APIs removed in
+  a given release with stylistic alternatives that were never deprecated, and many rows don't say when the
+  current form appeared. Example: the attribute `clone!` syntax needs glib 0.20, so for glib 0.19 the old `@weak`
+  form is correct, but only that crate's source tells you so.
+- Tell the user that the change was adapted below the tested baseline, and which parts of the references did not
+  apply.
+
+**3. With an authorized upgrade, move in this order**, one step per commit:
+
+1. glib / gtk4 / libadwaita (and sibling crates such as sourceview5) to matching series together, since mixing
+   series gives "two different versions of crate glib" errors;
+2. the version features;
+3. the Meson `dependency()` minimums;
+4. the Flatpak `runtime-version` (and CI images);
+5. `cargo clippy -D warnings` with the new features, fixing the deprecations it now reports (use the table above
+   as the checklist).
+
+Never raise one of features / Meson minimums / runtime without the others (`packaging-and-ci.md`).
 
 ## See also
 
