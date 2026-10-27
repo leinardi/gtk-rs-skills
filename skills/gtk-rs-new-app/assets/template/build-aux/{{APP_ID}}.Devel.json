@@ -21,6 +21,9 @@
         "build-args": [
             "--share=network"
         ],
+        "test-args": [
+            "--share=network"
+        ],
         "env": {
             "RUSTFLAGS": "-C force-frame-pointers=yes"
         }
@@ -31,9 +34,6 @@
             "buildsystem": "meson",
             "builddir": true,
             "run-tests": true,
-            "test-args": [
-                "--share=network"
-            ],
             "config-opts": [
                 "-Dprofile=development"
             ],

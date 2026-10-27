@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <schemalist gettext-domain="@gettext-package@">
-  <schema id="@app-id@" path="{{APP_PATH}}/">
+  <schema id="@app-id@" path="@app-path@">
     <key name="window-width" type="i">
       <default>800</default>
       <summary>Window width</summary>

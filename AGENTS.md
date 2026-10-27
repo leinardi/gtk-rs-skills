@@ -37,10 +37,10 @@ build, run or pass validation.
    desktop, metainfo and schema validation). The `template-check` CI job proves the same through
    flatpak-builder on the GNOME 50 SDK.
 3. **References agree with the template and with each other.** The template is the canonical
-   setup (config via `option_env!`, resource prefix = `resource-base-path`, schema id = app id,
-   schema compiled in the build dir, `cargo_vars` env). A reference that describes the build must
-   match it; a version bump updates the template, `SKILL.md`'s baseline line, `deprecated-apis.md`
-   and every reference that names the old version.
+   setup (config via `option_env!`, resource prefix = `resource-base-path`, schema id and path
+   derived from the app id, schema compiled in the build dir, `cargo_vars` env). A reference that
+   describes the build must match it; a version bump updates the template, `SKILL.md`'s baseline
+   line, `deprecated-apis.md` and every reference that names the old version.
 4. **Shipped text stays agent-shaped.** `SKILL.md` descriptions say what the skill does *and*
    when to use it, under 1024 characters; `SKILL.md` bodies stay short and route to references;
    references open with "Read this when…", carry a contents list when long, and end with Pitfalls

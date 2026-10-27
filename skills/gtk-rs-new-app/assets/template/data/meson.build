@@ -21,9 +21,12 @@ if desktop_file_validate.found()
   test('validate-desktop', desktop_file_validate, args: [desktop_file], suite: ['lint'])
 endif
 
-# Settings schema: the id is the application id, so Devel and stable builds keep separate settings.
+# Settings schema: both the id and the dconf path derive from the application id, so Devel and
+# stable builds keep separate settings. dconf stores values by path, not by schema id: two schemas
+# with different ids but the same path share every value.
 gschema_conf = configuration_data()
 gschema_conf.set('app-id', application_id)
+gschema_conf.set('app-path', '/' + application_id.replace('.', '/') + '/')
 gschema_conf.set('gettext-package', gettext_package)
 gschema_file = configure_file(
   input: '@0@.gschema.xml.in'.format(base_id),

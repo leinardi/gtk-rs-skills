@@ -52,7 +52,7 @@ src/application.rs      adw::Application subclass: startup actions/accels, about
 src/window.rs           CompositeTemplate window, win.say-hello action, window-state save/restore
 data/resources/ui/*.blp window.blp + shortcuts-dialog.blp (auto-wired app.shortcuts)
 data/resources/         gresource xml (prefix = base path), style.css, bundled metainfo for About
-data/*.in(.in)          desktop, metainfo, gschema (id = app id) + validation tests
+data/*.in(.in)          desktop, metainfo, gschema (id and path = app id) + validation tests
 data/icons/             app, Devel and symbolic icons (placeholders)
 po/                     POTFILES.in, LINGUAS, gettext setup
 build-aux/              Devel Flatpak manifest (GNOME 50), dist-vendor.sh for offline release tarballs
