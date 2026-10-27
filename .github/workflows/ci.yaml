@@ -109,14 +109,16 @@ jobs:
           cache-key: template-check-${{ hashFiles('skills/gtk-rs-new-app/assets/template/**') }}
           upload-artifact: false
 
+      # The previous step installed the SDK and its extensions system-wide (the container has no
+      # per-user flathub remote), so no --user and no --install-deps-from here.
       - name: Run clippy in the SDK build shell
         working-directory: _template-check
         run: |
-          flatpak-builder --user --disable-rofiles-fuse --install-deps-from=flathub --keep-build-dirs \
+          flatpak-builder --disable-rofiles-fuse --keep-build-dirs \
             --stop-at=template-check flatpak_app build-aux/io.github.example.TemplateCheck.Devel.json
           flatpak build-finish --share=network flatpak_app
           echo "cd .. && cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings" | \
-            flatpak-builder --user --disable-rofiles-fuse \
+            flatpak-builder --disable-rofiles-fuse \
             --build-shell=template-check flatpak_app build-aux/io.github.example.TemplateCheck.Devel.json
 
   actionlint:
