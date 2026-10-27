@@ -1,6 +1,6 @@
 {
   "name": "gtk-rs-skills",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Skills and reference docs for building modern GTK 4 + libadwaita apps in Rust (gtk-rs): development guide, project scaffolding and code review, distilled from the gtk-rs book and well-maintained GNOME Rust apps.",
   "author": {
     "name": "Roberto Leinardi",
