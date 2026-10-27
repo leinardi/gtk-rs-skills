@@ -1,8 +1,8 @@
 # gtk-rs skills
 
 Agent skills and reference documentation for building modern GTK 4 + libadwaita applications in Rust
-with [gtk-rs](https://gtk-rs.org). Distilled from the official [gtk-rs
-book](https://gtk-rs.org/gtk4-rs/stable/latest/book/) and from well-maintained GNOME Rust apps
+with [gtk-rs](https://gtk-rs.org). Based on guidance from the official [gtk-rs
+book](https://gtk-rs.org/gtk4-rs/stable/latest/book/) and patterns from well-maintained GNOME Rust apps
 listed on [gtk-rs.org](https://gtk-rs.org/) (Fractal, Amberol, Authenticator, Shortwave, Pika
 Backup, Warp, Fragments, Identity, Video Trimmer, Mission Center, Podcasts, Helvum, Icon Library,
 Contrast, Solanum).
