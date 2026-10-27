@@ -338,13 +338,18 @@ For nested colocated files, compile to flattened names (`session-view-foo.ui`) a
 ```xml
 <!-- data/<base id>.gschema.xml.in -->
 <schemalist gettext-domain="@gettext-package@">
-  <schema id="@app-id@" path="/com/example/MyApp/">
+  <schema id="@app-id@" path="@app-path@">
     <key name="window-width" type="i"><default>800</default><summary>Window width</summary></key>
   </schema>
 </schemalist>
 ```
 
 ```meson
+gschema_conf = configuration_data()
+gschema_conf.set('app-id', application_id)
+# dconf stores values by path, so the path must follow the application id too.
+gschema_conf.set('app-path', '/' + application_id.replace('.', '/') + '/')
+gschema_conf.set('gettext-package', gettext_package)
 gschema_file = configure_file(input: '@0@.gschema.xml.in'.format(base_id),
   output: '@0@.gschema.xml'.format(application_id),
   configuration: gschema_conf, install: true, install_dir: datadir / 'glib-2.0' / 'schemas')
@@ -361,8 +366,10 @@ devenv.set('GSETTINGS_SCHEMA_DIR', meson.current_build_dir())
 meson.add_devenv(devenv)
 ```
 
-Schema id = application id, so `gio::Settings::new(config::APP_ID)` gives Devel and stable builds separate
-settings. The path deliberately stays the base path; change it too if you want fully separate dconf storage.
+Both the schema id and the schema path derive from the application id, so `gio::Settings::new(config::APP_ID)`
+gives Devel and stable builds separate settings. Templating the id alone is not enough: dconf (and the keyfile
+backend) store values by **path**, so two schemas with different ids but the same path read and write the same
+values.
 Installed builds compile schemas through `gnome.post_install(glib_compile_schemas: true)`.
 
 Why a `custom_target` and not `gnome.compile_schemas()`: that helper compiles the **source** directory.
@@ -435,7 +442,7 @@ Devel conventions (`-Dprofile=development`): app id `<base>.Devel`; version suff
 (`-devel` from a tarball; guard `git` with `fs.is_dir('.git')` and `check: false`); debug cargo build; the
 window adds the `devel` CSS class (striped header bar) when `config::is_devel()`; striped icon;
 `desktop-file-name-suffix: " (Devel)"` and `RUST_LOG=<crate>=debug` in the Devel manifest; separate settings
-through the templated schema id.
+through the templated schema id *and* path.
 
 ## Pitfalls
 
@@ -449,7 +456,8 @@ through the templated schema id.
   `output: '.'` → list outputs explicitly.
 - Meson build uses Devel defaults in a release build → a constant read via `option_env!` is missing from
   `cargo_vars` → add the key there.
-- Devel and stable builds overwrite each other's settings → schema id not templated → use `@app-id@`.
+- Devel and stable builds overwrite each other's settings → schema id or path not templated (dconf keys values
+  by path) → use `@app-id@` for the id and a path derived from the application id.
 - "Settings schema … is not installed" under `meson devenv` with a templated schema →
   `gnome.compile_schemas()` compiled the source dir, which only has the `.in` → compile the build dir with a
   `custom_target` (section 8).

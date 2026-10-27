@@ -21,7 +21,7 @@ Contents:
 ```xml
 <!-- data/@APP_ID@.gschema.xml.in (scaffold template) -->
 <schemalist gettext-domain="@gettext-package@">
-  <schema id="@app-id@" path="/org/example/App/">
+  <schema id="@app-id@" path="@app-path@">
     <key name="window-width" type="i"><default>800</default><summary>Window width</summary></key>
     <key name="window-height" type="i"><default>600</default><summary>Window height</summary></key>
     <key name="is-maximized" type="b"><default>false</default><summary>Window maximized state</summary></key>
@@ -34,7 +34,7 @@ Contents:
 </schemalist>
 ```
 
-- **Schema ID = application ID.** The template substitutes `@app-id@`, so a `.Devel` build reads `org.example.App.Devel` and keeps its settings separate from the installed stable app. Construct with `gio::Settings::new(config::APP_ID)`.
+- **Schema ID and path follow the application ID.** The template substitutes `@app-id@` and `@app-path@` (the app id with dots turned into slashes, set in `data/meson.build`), so a `.Devel` build uses schema `org.example.App.Devel` at `/org/example/App/Devel/` and keeps its settings separate from the installed stable app. Templating only the id is not enough: dconf stores values by path, so two schemas sharing a path share every value. Construct with `gio::Settings::new(config::APP_ID)`.
 - `path` starts and ends with `/`. Key types are GVariant format strings (`b`, `i`, `u`, `d`, `s`, `as`, `(ii)`), and defaults are in GVariant text form, so strings need single quotes: `'date'`. Use `<choices>` (or an `<enum>`) for enumerated strings. The schema compiler then rejects invalid values, and `create_action` can offer them as radio items.
 - `gio::Settings::new` **aborts the process** if the schema isn't installed or compiled. The template compiles the configured schema into the build dir (a `gschemas-compiled` custom target) and `meson devenv` exports `GSETTINGS_SCHEMA_DIR`, which handles this for development runs. A plain `cargo run` without devenv crashes at the first `Settings::new`.
 - Create **one** instance and share it. Keep it on the application (fractal `Application::default().settings()`) or lazily on the window (the template: `OnceCell<gio::Settings>` + `get_or_init`). Every `Settings::new` re-resolves the schema. Shortwave constructs one per access, which works but is wasteful.
@@ -291,7 +291,7 @@ What to change for production: write atomically (§7) instead of `File::create`,
 ## Pitfalls
 
 - **App aborts at startup: "Settings schema 'org.example.App.Devel' is not installed"** → schema not compiled or `GSETTINGS_SCHEMA_DIR` not set → run through `meson devenv`, or install and compile the schema.
-- **Devel and stable builds overwrite each other's settings** → hard-coded schema ID → use `@app-id@`/`config::APP_ID`.
+- **Devel and stable builds overwrite each other's settings** → hard-coded schema ID or a shared schema path (dconf keys values by path) → template both from the application id (`@app-id@`, `@app-path@`) and construct with `config::APP_ID`.
 - **Tests change the developer's real preferences** → no memory backend → `GSETTINGS_BACKEND=memory`.
 - **Restored window is huge after unmaximizing** → saved `width()` instead of `default_size()`.
 - **Window size not saved on Ctrl+Q** → `quit()` skipped `close-request` → close the windows first.

@@ -97,7 +97,7 @@ Baseline for "current": gtk4 0.11 / libadwaita 0.9 / glib 0.22, GTK 4.22, libadw
 | `cargo vendor` for the dist tarball | `cargo vendor-filterer --platform=x86_64-unknown-linux-gnu --platform=aarch64-unknown-linux-gnu` (smaller) |
 | Blueprint `custom_target(..., output: '.')` | List the generated `.ui` files explicitly so ninja orders the GResource step correctly |
 | `appdata.xml` installed to `share/appdata` | `<id>.metainfo.xml` installed to `share/metainfo` |
-| Schema id hard-coded to the release app id | Template it with the build's application id so `.Devel` builds keep separate settings |
+| Schema id or path hard-coded to the release app id | Template both from the build's application id (dconf keys values by path) so `.Devel` builds keep separate settings |
 | `pretty_env_logger` (unmaintained) | `tracing` + `tracing-subscriber` with `EnvFilter`, or `glib::GlibLogger` |
 | ashpd with the `async-std` feature | ashpd's `async-io` feature (awaited on the GLib main context) or `tokio` if you already run tokio. oo7 0.6 still names its async-io option `async-std`. |
 | gettext-rs 0.7 safe `setlocale` | gettext-rs 0.8: `setlocale` is `unsafe`; call it first thing in `main` with a SAFETY comment |

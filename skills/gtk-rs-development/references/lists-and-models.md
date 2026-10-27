@@ -67,11 +67,19 @@ self.note_list.set_model(Some(&selection));
 
 - Keep the original store as the single source of truth and filter/sort with wrapper models. Rebuilding a store to
   filter destroys selection, scroll position and row widgets.
-- `CustomFilter` and `CustomSorter` are opaque to GTK: when their inputs change (an item's `archived` flag, a sort
-  setting), call `archived_filter.changed(gtk::FilterChange::Different)` / `sorter.changed(gtk::SorterChange::Different)`.
-  Don't create a new filter. Use `MoreStrict`/`LessStrict` when you know the direction; GTK then re-checks only
-  part of the items. Expression-based `StringFilter`, `StringSorter`, `NumericSorter` and `BoolFilter` watch
-  their inputs themselves.
+- **Filters and sorters do not see item property changes on their own**, expression-based ones included: a
+  `BoolFilter`/`StringFilter` re-evaluates an item only when told to. After an input changes (an item's
+  `archived` flag, a search term, a sort setting), invalidate explicitly:
+  - filters: `filter.changed(gtk::FilterChange::Different)` (or `MoreStrict`/`LessStrict` when you know the
+      direction, so GTK re-checks only part of the items). Since GTK 4.20 (gtk4 feature `v4_20`, included in
+      `gnome_50`) `filtered.set_watch_items(true)` makes a `FilterListModel` watch the properties its filter's
+      expressions read, at the cost of a notify handler per item.
+  - `CustomSorter`: `sorter.changed(gtk::SorterChange::Different)`.
+  - key-based sorters (`NumericSorter`, `StringSorter`, and `MultiSorter`s built from them) cache a sort key per
+      item, so `sorter.changed()` does **not** pick up a changed item property. Re-emit the item instead:
+      `store.items_changed(pos, 1, 1)` recomputes its key (it also re-runs filters for that item). `SortListModel`
+      has no `watch-items` at gtk4 0.11.
+  Don't create new filter or sorter objects to refresh.
 - Combine with `gtk::EveryFilter`/`AnyFilter` and `gtk::MultiSorter` instead of writing one large closure.
 - Selection models: `NoSelection` for activate-only lists (`single-click-activate: true` + the `activate`
   signal; fractal uses it in most lists), `SingleSelection` for pickers and master-detail, `MultiSelection` when
@@ -393,8 +401,10 @@ factory.connect_setup(|_, obj| {
   state to a `ListItem` property binding or disconnect in `unbind`.
 - Panic "already mutably borrowed" from inside `items_changed` → custom model emits while holding a `RefCell`
   borrow → compute counts in a block, drop the borrow, then emit.
-- Filter or sort order goes stale after an item changes → `CustomFilter`/`CustomSorter` don't watch properties →
-  call `changed(...)` or switch to an expression-based `StringFilter`/`StringSorter`.
+- Filter or sort order goes stale after an item changes → no filter or sorter watches item properties by itself,
+  expression-based ones included → `filter.changed(...)` (or `FilterListModel::set_watch_items(true)`, GTK ≥ 4.20);
+  for `NumericSorter`/`StringSorter`, whose per-item keys `changed()` does not refresh, `store.items_changed(pos, 1, 1)`;
+  for a `CustomSorter`, `changed(...)`.
 - `ListView` is slow with many items and every row is realised → it isn't the direct child of a
   `ScrolledWindow` (e.g. wrapped in a `Box`) → make it the direct child.
 - `Invalid object type 'NotesNoteListRow'` when the list appears → row type used only in a

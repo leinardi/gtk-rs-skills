@@ -202,7 +202,8 @@ dbus-run-session -- mutter --headless --wayland --no-x11 --virtual-monitor 1024x
   is not a practical test backend.
 - `GTK_A11Y=none` silences AT-SPI bus warnings when no accessibility bus exists.
 - Inside Flatpak: `flatpak-builder` test steps have no display. Either add
-  `"test-args": ["--socket=x11", "--share=network"]` to the module and wrap the build in `xvfb-run`
+  `"test-args": ["--socket=x11", "--share=network"]` to the `build-options` (top-level or the module's; not the
+  module itself, where flatpak-builder ignores it) and wrap the build in `xvfb-run`
   (warp, pika-backup), use the GitHub action's `run-tests: true`, or run GTK tests in a separate job on a
   host image with GTK installed.
 - Set `LANG=C.UTF-8` in CI so gettext and sorting behave deterministically.

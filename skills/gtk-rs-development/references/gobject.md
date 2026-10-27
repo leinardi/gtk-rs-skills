@@ -65,14 +65,15 @@ The `imp` struct holds the state and implements the virtual-method traits (`Obje
 | `glib::Object` | *(nothing)* |
 | `gtk::Widget` | `@extends gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;` |
 | `gtk::Box` | `@extends gtk::Box, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Orientable;` |
-| `adw::Bin`, `adw::NavigationPage` | `@extends adw::Bin, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;` |
+| `adw::Bin` | `@extends adw::Bin, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;` |
+| `adw::NavigationPage` | `@extends adw::NavigationPage, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget;` (a direct `gtk::Widget` subclass, not an `adw::Bin`) |
 | `adw::Dialog` | `@extends adw::Dialog, gtk::Widget, @implements gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::ShortcutManager;` |
 | `adw::PreferencesDialog` | as `adw::Dialog`, with `adw::PreferencesDialog` prepended |
 | `adw::ActionRow` | `@extends adw::ActionRow, adw::PreferencesRow, gtk::ListBoxRow, gtk::Widget, @implements gtk::Accessible, gtk::Actionable, gtk::Buildable, gtk::ConstraintTarget;` |
 | `adw::ApplicationWindow` | `@extends adw::ApplicationWindow, gtk::ApplicationWindow, gtk::Window, gtk::Widget, @implements gio::ActionGroup, gio::ActionMap, gtk::Accessible, gtk::Buildable, gtk::ConstraintTarget, gtk::Native, gtk::Root, gtk::ShortcutManager;` |
 | `adw::Application` | `@extends adw::Application, gtk::Application, gio::Application, @implements gio::ActionGroup, gio::ActionMap;` |
 
-You also need one `impl XxxImpl for T {}` per class in the chain. For `adw::Bin` that means `ObjectImpl`, `WidgetImpl` and `BinImpl`. Bring them into scope with `adw::subclass::prelude::*`, which also re-exports gtk's and glib's preludes.
+You also need one `impl XxxImpl for T {}` per class in the chain. For `adw::Bin` that means `ObjectImpl`, `WidgetImpl` and `BinImpl`; for `adw::NavigationPage`, `ObjectImpl`, `WidgetImpl` and `NavigationPageImpl`. Bring them into scope with `adw::subclass::prelude::*`, which also re-exports gtk's and glib's preludes.
 
 **`NAME` conventions.** The name must be unique across the whole process, including GTK, libadwaita and any library you load. Prefix it with an app-specific tag: `"SwPlayer"` (Shortwave), `"PkDialogPage"` (pika-backup), `"MyAppTask"`. A duplicate name panics at type registration. Templates refer to the type by this exact string (`template $MyAppTask : …` in Blueprint).
 
@@ -108,6 +109,7 @@ impl ObjectImpl for TaskRow {
 
 - Put setup that needs property values in `constructed`. `Default` runs before any property is set.
 - Use `dispose` to break cycles and disconnect from other objects; `Drop` is too late for anything that keeps *you* alive. Details are in `closures-and-lifetimes.md`.
+- `dispose` is the one override you do **not** chain up: glib calls the parent class's `dispose` right after yours, and there is no `parent_dispose()` (writing one is E0599). Every other override (`constructed`, `startup`, `close_request`, ...) chains up explicitly.
 - A widget deriving directly from `gtk::Widget` with a template calls `self.dispose_template()` in `dispose`. One that parents children by hand calls `child.unparent()` there.
 
 ## 3. Properties with `#[derive(glib::Properties)]`

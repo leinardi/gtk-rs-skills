@@ -45,7 +45,8 @@ emission, `items_changed`, a callback, or an `.await`. Details: `closures-and-li
 
 **GObject shape.** `mod imp` + `glib::wrapper!` listing every ancestor and interface; `#[derive(glib::Properties)]`
 with `#[glib::derived_properties]`; signals in a `LazyLock<Vec<Signal>>`; every override chains up
-(`parent_constructed()`, `parent_startup()`, ...) — first, unless the reference says otherwise. `OnceCell` for
+(`parent_constructed()`, `parent_startup()`, ...) — first, unless the reference says otherwise. The exception is
+`dispose`: glib chains it to the parent automatically and there is no `parent_dispose()`. `OnceCell` for
 set-once fields, `glib::WeakRef` for back-references. Details: `gobject.md`.
 
 **Data flow.** Model objects expose properties; widgets bind to them (`bind_property(...).sync_create()`, Blueprint
@@ -62,7 +63,7 @@ Details: `templates-and-blueprint.md`, `libadwaita-ui.md`, `lists-and-models.md`
 
 **Platform.** Design for Wayland and Flatpak: no window positioning, no global grabs, files through `gtk::FileDialog`
 (portal), other access through portals (ashpd); state under XDG dirs (`glib::user_data_dir()` etc.); preferences in
-GSettings with schema id = app id. Details: `platform-integration.md`, `settings-and-state.md`.
+GSettings with schema id and path derived from the app id. Details: `platform-integration.md`, `settings-and-state.md`.
 
 **Errors.** Library code returns `Result`; the UI layer decides how to show it (toast for transient, `AlertDialog`
 for blocking) and logs once with `tracing`. A dismissed/cancelled dialog is not an error. `unwrap()` only for true
@@ -110,7 +111,8 @@ Load only what the task needs; most tasks need one or two references.
 - No blocking I/O or long computation on the main thread; worker threads never touch widgets.
 - Every closure stored in a longer-lived object captures weakly or is disconnected; no `RefCell` borrow is held across a
   callback, emission or `.await` (`clippy::await_holding_refcell_ref` is clean).
-- Overrides chain up; `glib::wrapper!` lists the full ancestry; template child names match the template.
+- Overrides chain up (except `dispose`, which glib chains itself); `glib::wrapper!` lists the full ancestry;
+  template child names match the template.
 - New strings are translatable and their files are in `POTFILES.in`; icon-only buttons have tooltips.
 - No API from `deprecated-apis.md`'s left column in new code; nothing newer than the enabled crate features.
 - `cargo clippy -D warnings` and the Meson tests pass; running the app prints no new GTK criticals or warnings.

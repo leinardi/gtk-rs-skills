@@ -172,14 +172,20 @@ glib::idle_add_once(move || {
         app.merge_icons(icons);
     }
 });
-// Same, but runs immediately when already on the owning thread.
-glib::MainContext::default().invoke(move || { /* … */ });
 ```
+
+Prefer `idle_add_once` for hops from a worker: it always queues the closure on the default main context, which the
+GTK main thread iterates while the app runs. `glib::MainContext::default().invoke(f)` is **not** a guaranteed hop:
+it runs `f` immediately on the *calling* thread when that thread owns the context **or when nobody owns it** —
+for example a worker that starts before `app.run()` or outlives the main loop. Only while the main loop is running
+does `invoke` from a worker dispatch to the main thread. Use `invoke` only when "run now if possible" on the
+current owner is what you want, never as a way to reach widgets from a worker.
 
 `glib::idle_add_local_once` is the main-thread-only variant (no `Send` bound) and is the standard way to defer work
 until after the current signal emission, for example when a handler would otherwise re-enter a `RefCell` that the
-caller still borrows (identity: `src/page.rs`). `invoke_with_priority(glib::Priority::HIGH, …)` can order a hop
-before other pending sources (pika-backup: `src/status.rs`).
+caller still borrows (identity: `src/page.rs`). To order a hop before other pending sources, give the idle source a
+priority: `glib::idle_add_full(glib::Priority::HIGH, ...)` (pika-backup uses `invoke_with_priority`, which has the
+same ownership caveat as `invoke`: `src/status.rs`).
 
 ## Tokio-only dependencies
 

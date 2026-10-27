@@ -61,7 +61,10 @@ Why:
 - **`run-tests: true`** runs `meson test` (cargo test + desktop/metainfo/schema validation) after the build.
   There is no display in that sandbox; GTK widget tests need `"test-args": ["--socket=x11", "--share=network"]`
   plus an X server on the host (Authenticator, fractal), or keep them out of `meson test`
-  (`testing-and-debugging.md`).
+  (`testing-and-debugging.md`). `test-args` is a **build-options** property (top-level or the module's
+  `build-options`), like `build-args`; placed directly on the module, flatpak-builder only warns
+  `Unknown property test-args for type BuilderModule` and ignores it. The template sets
+  `"test-args": ["--share=network"]` in its top-level `build-options`.
 - **`force-frame-pointers`** makes `sysprof` stacks usable; the GNOME runtime itself is built with frame
   pointers.
 - `RUST_LOG`/`RUST_BACKTRACE` as `--env=` finish-args belong in the Devel manifest only.
@@ -313,9 +316,11 @@ it optional rather than installed by Meson.
 - Clippy in the build shell cannot download crates → shell lacks network → `flatpak build-finish
   --share=network flatpak_app` first.
 - `meson test` fails only in Flatpak with "cannot open display" → GTK tests in the no-display sandbox →
-  `test-args` with X11 + xvfb, the action's `run-tests`, or a separate headless test job.
+  `build-options.test-args` with X11 + xvfb, the action's `run-tests`, or a separate headless test job.
 - `cargo test` in the Flatpak test step cannot fetch a new dev-dependency → `cargo build` never downloaded
-  dev-dependencies and the test sandbox has no network → add `"--share=network"` to `test-args` in Devel.
+  dev-dependencies and the test sandbox has no network → add `"--share=network"` to `build-options.test-args` in Devel.
+- Test permissions seem ignored and the build log says `Unknown property test-args for type BuilderModule` →
+  `test-args` placed on the module itself → move it into `build-options`.
 - About dialog shows no release notes → version passed to `from_appdata` has no matching `<release>` →
   strip build suffixes and add the release entry.
 - Flathub review asks to drop permissions → broad `--filesystem` → use portals.
