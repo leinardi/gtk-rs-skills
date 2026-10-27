@@ -69,6 +69,29 @@ conditions (Flatpak, Devel build, slow disk, re-entrancy); **modernise** = outda
   recycled widgets; `ListBox` with thousands of rows; mutating items without `filter.changed()`/`sorter.changed()`;
   `items_changed` emitted while a borrow is held. → bug/risk (`references/lists-and-models.md`)
 
+### Documents, text, clipboard (`references/document-apps.md`, `references/text-editing.md`, `references/clipboard-and-dnd.md`)
+
+- `app.quit` calls `quit()` (after closing the windows or instead of it) in an app with unsaved state; a window's
+  unsaved-changes veto is overridden. → bug (data loss)
+- `close_request` without a re-entry guard: repeated Ctrl+W/Ctrl+Q opens several dialogs or starts several saves.
+  → bug
+- Dirty state from `TextBuffer::is_modified()`/`set_modified(false)` or from a revision counter; "saved" not
+  recorded when a save raced an edit; a custom undo savepoint stored as a stack depth. → bug
+- Overlapping saves of one document; `file` or the etag changed before a Save As succeeded (a failed Save As then
+  loses conflict detection on the original); a cancelled file dialog reported as an error, or a failed save not
+  shown. → bug
+- A load applied after the user typed during the read (only another open is checked, not the revision). → bug
+- Recovery drafts in the cache dir; draft writes and deletes not serialized; Discard or the last window closing
+  without awaiting the draft delete or holding the app until it ran; a failed delete acknowledged as success; the
+  close approved without re-checking for edits after the last await (cleanup or its error dialog). → bug
+- `TextBuffer`/`TextIter` captured into a worker; iters kept across edits or `.await`; GTK char offsets mixed with
+  Rust byte indices. → bug
+- Large-text search on the main thread, or in `spawn_blocking` without a cancel flag checked inside the scan, or
+  highlights applied without a generation check before each batch. → risk
+- `DropTargetAsync` drop handler that does not call `drop.finish()` on every path; MOVE source deleting data before
+  `drag-end` confirms it. → bug
+- An aborted `glib::JoinHandle` that is awaited (never resolves) or kept alive (the future isn't dropped). → bug
+
 ### UI, style, a11y, i18n
 
 - Deprecated widgets (`TreeView`, `gtk::Dialog`, `MessageDialog`, `FileChooser*`, `PreferencesWindow`,

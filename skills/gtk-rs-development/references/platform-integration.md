@@ -511,3 +511,5 @@ for preferences, `glib::user_*_dir()` for files, atomic writes, and blocking dat
 - `packaging-and-ci.md`: Flatpak permissions (`--share=network`, `--talk-name`), service and search-provider files
 - `project-layout-and-build.md`: Meson `configure_file` and data installation
 - `architecture.md`: where long-running services and background daemons belong
+- `document-apps.md`: logout inhibition while documents are unsaved, files from the document portal
+- `clipboard-and-dnd.md`: files dropped or pasted from other (sandboxed) apps

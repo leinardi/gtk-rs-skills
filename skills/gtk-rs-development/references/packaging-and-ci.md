@@ -303,6 +303,22 @@ it optional rather than installed by Meson.
 6. Open a PR on the Flathub repo updating the source URL/tag + `sha256`/commit (and `cargo-sources.json`).
 7. Raise the runtime only together with the crate features and Meson `dependency()` minimums.
 
+### Tested vs required versions
+
+Keep two things apart, and write both down in the README:
+
+- **Tested:** what CI builds and runs on, which is the Flatpak `runtime-version` (and the SDK that clippy runs
+  in, §5). Nothing older is exercised.
+- **Required:** the oldest versions the project claims to build against. Three places state it, and they must
+  agree: the Cargo version features (`gnome_50`, `v1_9`), the Meson `dependency(…, version: '>= …')` checks, and
+  the runtime. A feature above the Meson minimum compiles against APIs the minimum lacks; a Meson minimum above the
+  feature turns away distributions that would work.
+
+The scaffold ships with required = tested = GNOME 50. Lowering the required versions (for a distribution with an
+older GTK) means lowering all three together and adding a CI job on that older runtime, since otherwise the claim
+is untested. When working on an existing project, its required versions are the constraint: don't raise them as
+a side effect of a change (`deprecated-apis.md`, "Projects on older versions").
+
 ## Pitfalls
 
 - Flathub build fails "network access not allowed" or cargo "failed to download" → `--share=network` build

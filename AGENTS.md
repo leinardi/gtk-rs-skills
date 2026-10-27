@@ -11,7 +11,7 @@ A Claude Code plugin (and a set of open Agent Skills) for building modern GTK 4 
 applications in Rust with gtk-rs:
 
 - `skills/gtk-rs-development/` — the main skill: `SKILL.md` holds the rules that apply to every
-  change and routes to 17 topic references in `references/`.
+  change and routes to 20 topic references in `references/`.
 - `skills/gtk-rs-new-app/` — scaffolds a new app: `scripts/new_app.py` copies
   `assets/template/` and substitutes `{{TOKEN}}` placeholders.
 - `skills/gtk-rs-review/` — a review checklist for gtk-rs code.
@@ -24,13 +24,15 @@ build, run or pass validation.
 
 ## The rules
 
-1. **Every code claim is checked against the pinned versions.** The baseline is gtk4 0.11 /
+1. **Every code claim is checked against the pinned versions.** The tested baseline is gtk4 0.11 /
    libadwaita 0.9 / glib 0.22 (GTK 4.22, libadwaita 1.9, GNOME 50), stated in
-   `skills/gtk-rs-development/SKILL.md`. A Rust snippet must `cargo check` (and pass clippy pedantic
-   for code a reader would copy) against those crates; a Blueprint snippet must compile with
-   `blueprint-compiler`. An API, signature, feature gate or version number is confirmed in the crate
-   source (`~/.cargo/registry/src/*/`), the installed GTK/libadwaita docs or the upstream source —
-   never from memory. Anything that cannot be checked is either left out or marked `(verify)`.
+   `skills/gtk-rs-development/SKILL.md`; the scaffold requires it, and guidance for older projects
+   says to verify against their own versions instead. A Rust snippet must `cargo check` (and pass
+   clippy pedantic for code a reader would copy) against those crates; a Blueprint snippet must
+   compile with `blueprint-compiler`. An API, signature, feature gate or version number is confirmed
+   in the crate source (`~/.cargo/registry/src/*/`), the installed GTK/libadwaita docs or the
+   upstream source — never from memory. Anything that cannot be checked is either left out or
+   marked `(verify)`.
 2. **The template always generates a working app.** After any change under
    `skills/gtk-rs-new-app/`, `make test` and `make template-check` pass: the generated project is
    `cargo fmt`/`clippy -D warnings` clean, builds with Meson and passes `meson test` (cargo test plus

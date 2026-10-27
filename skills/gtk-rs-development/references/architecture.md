@@ -159,18 +159,19 @@ Call sites read `Application::default().settings()` or `Application::default().p
 ```rust
 let quit = gio::ActionEntry::builder("quit")
     .activate(|app: &Application, _, _| {
-        // quit() alone skips close-request, so windows would not save their state.
+        // Not app.quit(): it skips close-request. The app exits when its last window is gone.
         for window in app.windows() {
             window.close();
         }
-        app.quit();
     })
     .build();
 self.add_action_entries([quit]);
 self.set_accels_for_action("app.quit", &["<Control>q"]);
 ```
 
-`gio::Application::quit()` stops the main loop immediately. No window receives `close-request`, so any state saving that lives in `WindowImpl::close_request` is skipped. Closing the windows first runs those handlers (fractal and the template do this). If a window vetoes the close with `glib::Propagation::Stop` (for example "unsaved changes?"), don't call `quit()` unconditionally. Let the last window closing end the app, which `GtkApplication` does by default.
+`gio::Application::quit()` stops the main loop immediately. No window receives `close-request`, so any state saving that lives in `WindowImpl::close_request` is skipped, and a window cannot veto. Closing the windows instead runs those handlers, and `GtkApplication` exits by itself once its last window is gone (the template does this). A window that returns `glib::Propagation::Stop` (for example "unsaved changes?") keeps the app running. Calling `quit()` after the loop, as many apps do, would end the process anyway and lose that document. See `document-apps.md` for the full close flow.
+
+Two cases never exit this way: an app holding an `ApplicationHoldGuard` (background apps, `platform-integration.md`) and windows with `hide-on-close`, which stay in `app.windows()`. Those apps call `quit()` explicitly, but only after every window has agreed to close.
 
 ## 5. The main window
 
@@ -366,7 +367,7 @@ log::set_max_level(log::LevelFilter::Debug);
 
 - **Stylesheet or shortcuts dialog silently not loaded in Devel builds** → `resource-base-path` was derived from the `.Devel` app ID → set it explicitly to the unsuffixed resource path.
 - **Second launch opens a second main window** → `activate` always constructs a window → get or create the window, then `present()`.
-- **Window size not saved on Ctrl+Q** → `app.quit()` skips `close-request` → close all windows before quitting.
+- **Window size not saved on Ctrl+Q, or unsaved changes lost** → `app.quit()` skips `close-request`, and calling it after closing the windows overrides a veto → close the windows and let the app exit when the last one goes.
 - **Window or app never finalized; handlers keep firing after close** → strong window reference stored in the application → use `WeakRef` or `active_window()`.
 - **`Application::default()` panics with "should be running"** → called from a worker thread, or before `Application::new()` → pass data over a channel, and construct the app first in `main`.
 - **"Your application does not implement g_application_activate()" warning** → no `activate` override → implement it, even if it only presents the window.
@@ -375,4 +376,4 @@ log::set_max_level(log::LevelFilter::Debug);
 
 ## See also
 
-`gobject.md`, `closures-and-lifetimes.md`, `settings-and-state.md`, `async-and-threads.md`, `actions-and-shortcuts.md`, `templates-and-blueprint.md`, `lists-and-models.md`, `libadwaita-ui.md`, `project-layout-and-build.md`, `testing-and-debugging.md`
+`gobject.md`, `closures-and-lifetimes.md`, `settings-and-state.md`, `async-and-threads.md`, `actions-and-shortcuts.md`, `templates-and-blueprint.md`, `lists-and-models.md`, `libadwaita-ui.md`, `project-layout-and-build.md`, `testing-and-debugging.md`, `document-apps.md`

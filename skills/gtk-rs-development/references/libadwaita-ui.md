@@ -461,3 +461,5 @@ let handler = style.connect_dark_notify(clone!(#[weak(rename_to = this)] self, m
 - `css-drawing-animation.md`: style classes, CSS variables, animations.
 - `accessibility-and-i18n.md`: accessible labels, translatable strings.
 - `deprecated-apis.md`: old widgets and their replacements.
+- `document-apps.md`: the "Save changes?" `AlertDialog` and close confirmation for windows.
+- `text-editing.md`: `TextView`, GtkSourceView and schemes that follow the style manager.

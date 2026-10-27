@@ -1,6 +1,6 @@
 ---
 name: gtk-rs-development
-description: Modern gtk-rs (gtk4-rs + libadwaita) application development guide — architecture, GObject subclassing, properties/signals, clone! and memory, async/threads, Blueprint composite templates, actions, list models, libadwaita adaptive UI, CSS, GSettings, i18n, accessibility, Meson/Flatpak packaging, testing and compile-error diagnosis, distilled from the gtk-rs book and well-maintained GNOME Rust apps (Fractal, Amberol, Authenticator, Shortwave, Pika Backup, Identity...). Use it for ANY change to a Rust GTK 4 app — whenever Cargo.toml depends on gtk4/libadwaita, sources `use gtk::`/`adw::`, or the repo has .blp/.ui templates — including requests phrased only as symptoms ("the list doesn't update", "UI freezes while loading", "window opens too small", "this clone! won't compile", "memory keeps growing"), new widgets/features, refactors, reviews and porting old gtk-rs code. Also use it when answering gtk-rs questions even if no repo is open.
+description: Modern gtk-rs (gtk4-rs + libadwaita) application development guide — architecture, GObject subclassing, properties/signals, clone! and memory, async/threads, Blueprint composite templates, actions, list models, libadwaita adaptive UI, CSS, GSettings, documents (save, unsaved changes, recovery), text editing/undo, clipboard and drag-and-drop, i18n, accessibility, Meson/Flatpak packaging, testing and compile-error diagnosis, distilled from the gtk-rs book and well-maintained GNOME Rust apps (Fractal, Amberol, Shortwave, Pika Backup...). Use it for ANY change to a Rust GTK 4 app — whenever Cargo.toml depends on gtk4/libadwaita, sources `use gtk::`/`adw::`, or the repo has .blp/.ui templates — including requests phrased only as symptoms ("the list doesn't update", "UI freezes while loading", "window opens too small", "this clone! won't compile", "memory keeps growing"), new widgets/features, refactors, reviews and porting old gtk-rs code. Also use it when answering gtk-rs questions even if no repo is open.
 ---
 
 # gtk-rs development
@@ -8,9 +8,10 @@ description: Modern gtk-rs (gtk4-rs + libadwaita) application development guide 
 Build GTK 4 / libadwaita apps in Rust the way current, well-maintained GNOME apps do. This file holds the rules that
 apply to every change; topic details live in `references/` — open the one that matches the task before writing code.
 
-Baseline: **gtk4 0.11 / libadwaita 0.9 / glib 0.22**, GTK 4.22, libadwaita 1.9 (GNOME 50), Rust edition 2024,
-Blueprint templates, Meson + Flatpak. For a brand-new project use the `gtk-rs-new-app` skill; to audit code use
-`gtk-rs-review`.
+Tested baseline: **gtk4 0.11 / libadwaita 0.9 / glib 0.22**, GTK 4.22, libadwaita 1.9 (GNOME 50), Rust edition
+2024, Blueprint templates, Meson + Flatpak. Every snippet in the references is checked against it, and the scaffold
+requires it. Existing projects keep the versions they support (see step 4 below). For a brand-new project use the
+`gtk-rs-new-app` skill; to audit code use `gtk-rs-review`.
 
 ## First, orient yourself in the project
 
@@ -21,6 +22,10 @@ Blueprint templates, Meson + Flatpak. For a brand-new project use the `gtk-rs-ne
    in code; `mod imp` inline vs `foo/imp.rs`; `tracing` vs `log`; tokio present or not; `config.rs.in` vs `option_env!`.
 3. Note the app id and resource base path (`resource-base-path`, gresource `prefix`) — templates, CSS and icons
    resolve against it.
+4. If the project's crates or features are older than the tested baseline, write against **its** versions. Check
+   each API in that version's source (`~/.cargo/registry/src/*/gtk4-<its version>/`), don't upgrade dependencies
+   unless the user asks for it, and say when guidance was adapted from the baseline. Details:
+   `deprecated-apis.md` ("Projects on older versions").
 
 ## Verify, don't recall
 
@@ -87,6 +92,9 @@ invariants (template children, resources compiled into the binary).
 | ListView/GridView/ColumnView, factories, filters/sorters, custom ListModel, boxed lists | `references/lists-and-models.md` |
 | Adaptive layout, navigation, dialogs, preferences, toasts, about, style manager | `references/libadwaita-ui.md` |
 | CSS, style classes, custom drawing (snapshot), measure/allocate, animations | `references/css-drawing-animation.md` |
+| Opening/saving files, unsaved changes, close/quit confirmation, autosave and crash recovery | `references/document-apps.md` |
+| TextView/TextBuffer, cursor and selection, Unicode offsets, undo grouping, search, GtkSourceView | `references/text-editing.md` |
+| Copy/paste of app content, drag and drop, file drops, content formats | `references/clipboard-and-dnd.md` |
 | Accessibility, translations (gettext), POTFILES, RTL | `references/accessibility-and-i18n.md` |
 | A gtk-rs call does not compile | `references/compile-traps.md` |
 | Old API / porting old code / "is this still current?" | `references/deprecated-apis.md` |
