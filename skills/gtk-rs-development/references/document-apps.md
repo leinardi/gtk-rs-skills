@@ -51,6 +51,15 @@ pub struct Snapshot {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LoadOutcome {
+    Loaded,
+    /// A newer open into the same document won.
+    Superseded,
+    /// The user edited the document during the read; it was left untouched.
+    Edited,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SaveOutcome {
     /// The snapshot reached disk. The document may still be modified if it was edited meanwhile.
     Saved,
@@ -75,6 +84,8 @@ mod imp {
         pub modified: Cell<bool>,
         #[property(get)]
         pub saving: Cell<bool>,
+        #[property(get)]
+        pub loading: Cell<bool>,
         /// Bumped on every edit; only used to tell whether a snapshot is still current.
         pub revision: Cell<u64>,
         /// The text the last successful save (or load) put on disk.
@@ -165,6 +176,12 @@ impl Document {
         imp.saved_text.replace(text);
     }
 
+    fn set_loading(&self, loading: bool) {
+        if self.imp().loading.replace(loading) != loading {
+            self.notify_loading();
+        }
+    }
+
     fn set_saving(&self, saving: bool) {
         if self.imp().saving.replace(saving) != saving {
             self.notify_saving();
@@ -174,7 +191,8 @@ impl Document {
 ```
 
 - The window binds its title to `modified` and `file` (`• name` or an `adw::WindowTitle`
-  subtitle), and keeps `win.save-as` disabled while `saving`.
+  subtitle), keeps `win.save-as` disabled while `saving`, and makes the view read-only while
+  `loading` (`document.bind_property("loading", &view, "editable").invert_boolean()`).
 - Keeping a copy of the saved text doubles memory and costs a comparison per edit once lengths
   match. That is fine for documents people type. For very large files, compare a digest of the
   saved bytes, debounced, or use GtkSourceView's file handling (`text-editing.md`).
@@ -188,28 +206,33 @@ impl Document {
 
 ```rust
 impl Document {
-    /// Loads `file`. Returns `Ok(false)` when a newer load started meanwhile (stale result).
-    pub async fn load(&self, file: &gio::File) -> Result<bool, glib::Error> {
+    /// Loads `file` into this document.
+    pub async fn load(&self, file: &gio::File) -> Result<LoadOutcome, glib::Error> {
         let imp = self.imp();
         let generation = imp.load_generation.get() + 1;
         imp.load_generation.set(generation);
+        let revision = self.revision();
+        self.set_loading(true); // the view binds `editable` to !loading
 
-        let (bytes, etag) = file.load_contents_future().await?;
+        let read = file.load_contents_future().await;
         if imp.load_generation.get() != generation {
-            return Ok(false); // a newer open won
+            return Ok(LoadOutcome::Superseded); // a newer open won; it clears `loading`
+        }
+        self.set_loading(false);
+        let (bytes, etag) = read?;
+        if self.revision() != revision {
+            return Ok(LoadOutcome::Edited); // edited during the read: never overwrite that
         }
         let text = String::from_utf8(bytes.to_vec()).map_err(|_| {
             glib::Error::new(gio::IOErrorEnum::InvalidData, "The file is not valid UTF-8")
         })?;
 
         self.set_saved_text(text.clone());
-        imp.etag.replace(etag);
         // set_text() is irreversible: loading clears the undo history.
         imp.buffer.set_text(&text);
-        imp.file.replace(Some(file.clone()));
-        self.notify_file();
+        self.set_file_and_etag(file, etag);
         self.update_modified();
-        Ok(true)
+        Ok(LoadOutcome::Loaded)
     }
 }
 ```
@@ -234,26 +257,38 @@ async fn open_document(&self) {
 /// Loads `file` here if this window holds an empty, untouched document, else in a new window.
 pub async fn open_file(&self, file: &gio::File) {
     let document = self.document();
-    let window = if document.file().is_none() && !document.modified() {
-        self.clone()
-    } else {
-        let Some(app) = self.application().and_downcast::<Application>() else {
-            return;
-        };
-        let window = Window::new(&app);
-        window.present();
-        window
+    if document.file().is_none() && !document.modified() && self.load_here(file).await {
+        return;
+    }
+    // This document has (or got, during the read) content of its own: use a new window.
+    let Some(app) = self.application().and_downcast::<Application>() else {
+        return;
     };
-    match window.document().load(file).await {
-        Ok(true) => {}
-        Ok(false) => tracing::debug!("A newer open replaced this one"),
-        Err(err) => window.show_error(&gettext("Could Not Open the File"), &err),
+    let window = Window::new(&app);
+    window.present();
+    window.load_here(file).await;
+}
+
+/// Returns `false` when the document was edited during the read and left untouched.
+async fn load_here(&self, file: &gio::File) -> bool {
+    match self.document().load(file).await {
+        Ok(LoadOutcome::Loaded | LoadOutcome::Superseded) => true,
+        Ok(LoadOutcome::Edited) => false,
+        Err(err) => {
+            self.show_error(&gettext("Could Not Open the File"), &err);
+            true
+        }
     }
 }
 ```
 
 - **Stale opens.** Two quick opens into the same document race. The load generation makes the
-  older result a no-op, whatever order the reads finish in. `install_action_async` hands the
+  older result a no-op (`Superseded`), whatever order the reads finish in.
+- **Edits during the read.** The generation only detects another open, not typing. The revision
+  captured before the await does: if it changed, `load` returns `Edited` and leaves the buffer
+  alone, and `open_file` opens the file in a new window instead. Without that check the read
+  would replace what was typed and mark the document clean. The view is read-only while
+  `loading` too, but programmatic edits (paste handlers, plugins) bypass that. `install_action_async` hands the
   future a strong window reference, so a load still finishes after its window closed; it only
   fills that window's document, which is then dropped.
 - **Files from the command line and the file manager.** Set `ApplicationFlags::HANDLES_OPEN` and
@@ -287,20 +322,17 @@ impl Document {
     /// Saves to the current file. The caller asks for a file first (Save As) when there is none.
     pub async fn save(&self) -> Result<SaveOutcome, glib::Error> {
         let file = self.file().expect("save() needs a file; use save_as()");
-        self.write(&file).await
+        let etag = self.imp().etag.borrow().clone();
+        self.write(&file, etag).await
     }
 
-    /// Saves to `file` and makes it the document's file, but only once the write succeeded.
+    /// Saves to `file`. The document's file and etag change only once the write succeeded, so a
+    /// failed Save As leaves the original file's conflict detection intact.
     pub async fn save_as(&self, file: &gio::File) -> Result<SaveOutcome, glib::Error> {
-        let imp = self.imp();
-        if imp.saving.get() {
+        if self.saving() {
             return Ok(SaveOutcome::Busy);
         }
-        imp.etag.replace(None); // a different file: no etag to compare
-        let outcome = self.write(file).await?;
-        imp.file.replace(Some(file.clone()));
-        self.notify_file();
-        Ok(outcome)
+        self.write(file, None).await // a different file: no etag to compare
     }
 
     /// After the user chose to overwrite a file that changed on disk.
@@ -308,7 +340,16 @@ impl Document {
         self.imp().etag.replace(None);
     }
 
-    async fn write(&self, file: &gio::File) -> Result<SaveOutcome, glib::Error> {
+    fn set_file_and_etag(&self, file: &gio::File, etag: Option<glib::GString>) {
+        let imp = self.imp();
+        imp.etag.replace(etag);
+        if imp.file.borrow().as_ref() != Some(file) {
+            imp.file.replace(Some(file.clone()));
+            self.notify_file();
+        }
+    }
+
+    async fn write(&self, file: &gio::File, mut etag: Option<glib::GString>) -> Result<SaveOutcome, glib::Error> {
         let imp = self.imp();
         if imp.saving.get() {
             imp.save_again.set(true);
@@ -320,7 +361,6 @@ impl Document {
 
         let result = loop {
             let snapshot = self.snapshot();
-            let etag = imp.etag.borrow().clone(); // no borrow held across the await
             let written = file
                 .replace_contents_future(
                     snapshot.text.clone().into_bytes(),
@@ -334,9 +374,10 @@ impl Document {
                     // Always record what reached disk, even if the buffer moved on meanwhile:
                     // undoing back to the old content must then read as modified.
                     self.set_saved_text(snapshot.text);
-                    imp.etag.replace(new_etag);
+                    self.set_file_and_etag(file, new_etag.clone());
                     self.update_modified();
                     if imp.save_again.take() && self.modified() {
+                        etag = new_etag;
                         continue;
                     }
                     break Ok(SaveOutcome::Saved);
@@ -369,8 +410,11 @@ Why it is shaped like this:
 - **The etag detects external changes.** A `gio::IOErrorEnum::WrongEtag` error means another
   program changed the file since it was loaded or saved. Ask, then `forget_etag()` and retry to
   overwrite. `make_backup: true` keeps a `file~` copy if the app wants one.
-- **Save As changes `file` only after success.** A failed or cancelled Save As leaves the file,
-  the etag and the saved text untouched.
+- **Save As changes `file` and the etag only after success.** `write` takes the destination's etag
+  as a parameter (the current one for Save, `None` for Save As) and stores file and etag together
+  once the write landed. Clearing the document's etag before a Save As would leave a failed Save
+  As with no etag, and the next Save would silently overwrite external changes to the original.
+  A failed or cancelled Save As leaves the file, the etag and the saved text untouched.
 
 The window's save helper shows errors and stays silent on cancellation:
 
@@ -500,24 +544,54 @@ async fn confirm_close(&self) {
             imp.close_flow.set(CloseFlow::Saving);
             // Close only if the save went through and nothing was typed meanwhile.
             if self.save_document().await && !self.document().modified() {
-                imp.close_flow.set(CloseFlow::CleaningUp);
-                self.document().drafts().discard().await;
-                CloseFlow::Approved
+                self.finish_close(false).await
             } else {
                 CloseFlow::Idle
             }
         }
-        "discard" => {
-            imp.close_flow.set(CloseFlow::CleaningUp);
-            self.document().drafts().discard().await;
-            CloseFlow::Approved
-        }
+        "discard" => self.finish_close(true).await,
         _ => CloseFlow::Idle, // Cancel or Escape
     };
     imp.close_flow.set(next);
     if next == CloseFlow::Approved {
         self.close();
     }
+}
+
+/// Removes the draft, then approves the close unless the document changed meanwhile.
+async fn finish_close(&self, discarding: bool) -> CloseFlow {
+    self.imp().close_flow.set(CloseFlow::CleaningUp);
+    let document = self.document();
+    let revision = document.revision();
+    let removed = document.drafts().discard().await;
+    if document.revision() != revision {
+        return CloseFlow::Idle; // typed during the cleanup: keep the window and the edits
+    }
+    if let Err(err) = removed {
+        tracing::warn!("Failed to delete a recovery draft: {err}");
+        // After a save the draft only repeats the file. After Discard it would bring the
+        // discarded text back on the next start, so let the user decide.
+        if discarding && !self.confirm_close_despite_draft(&err).await {
+            return CloseFlow::Idle;
+        }
+    }
+    CloseFlow::Approved
+}
+
+async fn confirm_close_despite_draft(&self, err: &glib::Error) -> bool {
+    let dialog = adw::AlertDialog::builder()
+        .heading(gettext("Could Not Remove the Recovery Copy"))
+        .body(format!(
+            "{}\n\n{}",
+            err.message(),
+            gettext("If you close now, the discarded changes may be offered for recovery next time.")
+        ))
+        .close_response("cancel")
+        .default_response("cancel")
+        .build();
+    dialog.add_responses(&[("cancel", &gettext("_Cancel")), ("close", &gettext("Close _Anyway"))]);
+    dialog.set_response_appearance("close", adw::ResponseAppearance::Destructive);
+    dialog.choose_future(Some(self)).await == "close"
 }
 
 async fn ask_save_changes(&self) -> glib::GString {
@@ -544,7 +618,9 @@ Every branch ends in a defined state:
 | --- | --- |
 | Cancel / Escape | `Idle`, window stays open |
 | Discard | draft deleted and **awaited**, then `Approved` and `close()` |
-| Save, success, document clean | draft deleted and awaited, then `close()` |
+| Discard, deleting the draft failed | "Close Anyway?" (else `Idle`, window open) |
+| Save, success, document clean | draft deleted and awaited, then `close()` (a failed delete is only logged: the draft repeats the file) |
+| Edited while the draft is being deleted | `Idle`, window open, edits kept |
 | Save, failure | error shown, `Idle`, window open, draft kept |
 | Save, Save As cancelled | silent, `Idle`, window open |
 | Save, edited while saving | `Idle`, window open (still modified) |
@@ -617,8 +693,11 @@ Every draft write and delete for a document goes through **one queue**:
 - **Epoch.** Discard and a successful save bump the epoch and cancel the pending debounce. A write
   queued before that is dropped before it touches disk.
 - **Drain before exit.** Each queued operation holds the application, and `discard()` awaits an
-  acknowledgement. The close flow approves only after the draft is gone, and closing the last
-  window cannot end the process with a delete still queued.
+  acknowledgement carrying the delete's `Result` (a missing draft counts as success). The close
+  flow approves only after the draft is gone, or after the user accepted that it could not be
+  removed, and closing the last window cannot end the process with a delete still queued.
+- **Re-check after awaiting.** The user can type while the delete runs. `finish_close` compares
+  the revision before and after and keeps the window open if it changed.
 - **Retention.** Delete a draft when the document becomes clean (a successful save, or undo back
   to the saved content: `clear()` in `update_modified`, §1) or on an explicit Discard. A failed or
   cancelled save keeps it.
@@ -644,7 +723,7 @@ enum Op {
         text: String,
     },
     Delete {
-        reply: Option<async_channel::Sender<()>>,
+        reply: Option<async_channel::Sender<Result<(), glib::Error>>>,
     },
 }
 
@@ -711,12 +790,14 @@ impl Drafts {
         self.enqueue(Op::Delete { reply: None });
     }
 
-    /// The user discarded the changes: drop the draft and wait until it is gone from disk.
-    pub async fn discard(&self) {
+    /// Drops the draft and waits until it is gone from disk (or the delete failed).
+    pub async fn discard(&self) -> Result<(), glib::Error> {
         self.invalidate();
         let (reply, done) = async_channel::bounded(1);
         self.enqueue(Op::Delete { reply: Some(reply) });
-        let _ = done.recv().await;
+        done.recv().await.unwrap_or_else(|_| {
+            Err(glib::Error::new(gio::IOErrorEnum::Failed, "The draft queue stopped"))
+        })
     }
 
     fn cancel_pending(&self) {
@@ -754,14 +835,18 @@ impl Drafts {
                             }
                         }
                         Op::Delete { reply } => {
-                            match file.delete_future(glib::Priority::DEFAULT).await {
-                                Err(err) if !err.matches(gio::IOErrorEnum::NotFound) => {
+                            let result = match file.delete_future(glib::Priority::DEFAULT).await {
+                                Err(err) if !err.matches(gio::IOErrorEnum::NotFound) => Err(err),
+                                _ => Ok(()), // deleted, or there was no draft
+                            };
+                            match (reply, result) {
+                                (Some(reply), result) => {
+                                    let _ = reply.send(result).await;
+                                }
+                                (None, Err(err)) => {
                                     tracing::warn!("Failed to delete a recovery draft: {err}");
                                 }
-                                _ => {}
-                            }
-                            if let Some(reply) = reply {
-                                let _ = reply.send(()).await;
+                                (None, Ok(())) => {}
                             }
                         }
                     }
@@ -872,6 +957,11 @@ add an artificial delay before the write to widen races.
 - Two saves started together: one writes, the other returns `Queued`, and the final file has the
   latest text.
 - Two quick opens into one document apply only the second.
+- Typing while a file loads keeps the typed text (the file opens in a new window).
+- Typing while the draft is being deleted after Discard or Save keeps the window open.
+- A failed Save As, then an external change to the original, then Save → `WrongEtag`.
+- Discard with a draft that cannot be deleted (read-only drafts dir) → "Close Anyway?"; Cancel
+  keeps the window and the draft.
 - Ctrl+Q with a modified window: the app keeps running until the dialog is answered.
 - Discard while an autosave write is in flight and the last window closes: the process stays
   alive until the delete is acknowledged, and the next start finds no draft.
@@ -896,6 +986,15 @@ add an artificial delay before the write to widen races.
   with a `save_again` flag.
 - **Save As error leaves the title showing the new name** → `file` set before the write →
   set it after success.
+- **External changes overwritten after a failed Save As** → the etag was cleared before the
+  write and never restored → pass the destination's etag into the write; update file and etag
+  together on success.
+- **Text typed while a file loads is replaced, and the document reads clean** → only another
+  open was checked → capture the revision before the read and refuse to apply if it changed.
+- **Window closes although the user typed during the draft cleanup** → close approved from a
+  dirty check taken before the await → re-check the revision after the cleanup.
+- **Discarded text is offered for recovery after "Discard"** → a failed draft delete was
+  acknowledged as success → send the delete's `Result` back and ask before closing.
 - **A discarded draft reappears after restart** → delete raced an in-flight autosave, or the
   process exited before the delete ran → one queue per document, an epoch, an acknowledged
   delete, and a hold guard per queued operation.
