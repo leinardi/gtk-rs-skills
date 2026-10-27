@@ -1,14 +1,19 @@
 name: CI
 
-# The authoritative checks (pre-commit-all, test, template-check) run on every pull request, every push
-# to main and every dispatch; the reviewdog jobs only annotate pull requests. ci-result is the one
-# job that stands for all of them.
+# The authoritative checks (pre-commit-all, test, template-check, template-clippy) run on every push
+# to main, every dispatch and every weekly scheduled run; on a pull request the two template jobs run
+# only when it touches what they read (see the changes job). The reviewdog jobs only annotate pull
+# requests. ci-result is the one job that stands for all of them.
 on:
   pull_request:
   push:
     branches:
       - main
   workflow_dispatch:
+  # Weekly, so drift in the GNOME runtime, the Rust extension or the crates shows up even in a quiet
+  # week without template changes.
+  schedule:
+    - cron: "23 5 * * 1"
 
 concurrency:
   group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
@@ -84,7 +89,47 @@ jobs:
   # on the generated Devel manifest (GNOME 50 SDK), which runs `meson test` (cargo test plus the
   # desktop, metainfo and schema validation) inside the sandbox, then clippy in the module's build
   # shell. The runner's own GTK is older than the template targets, hence the SDK container.
+  # Decides whether the template jobs run. They read only the generator and template
+  # (skills/gtk-rs-new-app/) and this workflow, so a pull request touching neither skips them.
+  # Every other event runs them.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      template: ${{ steps.filter.outputs.template }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Check whether the template inputs changed
+        id: filter
+        env:
+          EVENT: ${{ github.event_name }}
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          if [ "$EVENT" != "pull_request" ]; then
+            echo "template=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          changed="$(git diff --name-only "$BASE...$HEAD")"
+          echo "$changed"
+          if grep -qE '^(skills/gtk-rs-new-app/|\.github/workflows/ci\.yaml$)' <<<"$changed"; then
+            echo "template=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No template input changed: the template jobs are skipped."
+            echo "template=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  # Generates an app from the template, then builds it with flatpak-builder on the GNOME 50 SDK and
+  # runs its Meson tests (cargo test, desktop, metainfo and schema validation).
   template-check:
+    needs: changes
+    if: needs.changes.outputs.template == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     container:
@@ -109,12 +154,33 @@ jobs:
           cache-key: template-check-${{ hashFiles('skills/gtk-rs-new-app/assets/template/**') }}
           upload-artifact: false
 
-      # The previous step installed the SDK and its extensions system-wide (the container has no
-      # per-user flathub remote), so no --user and no --install-deps-from here.
-      - name: Run clippy in the SDK build shell
+  # cargo fmt and clippy on the generated app, in the GNOME 50 SDK. Its own build, independent of
+  # template-check's, so it runs in parallel with it rather than after it.
+  template-clippy:
+    needs: changes
+    if: needs.changes.outputs.template == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:gnome-50
+      options: --privileged
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Generate the sample app
+        run: |
+          python3 -I skills/gtk-rs-new-app/scripts/new_app.py \
+            --app-id io.github.example.TemplateCheck --name "Template Check" \
+            --crate template-check --dest _template-check
+
+      # No --user: in this container the flathub remote and the SDK are system-wide, and a
+      # per-user flatpak-builder finds no remote to install from.
+      - name: Run fmt and clippy in the SDK build shell
         working-directory: _template-check
         run: |
-          flatpak-builder --disable-rofiles-fuse --keep-build-dirs \
+          flatpak-builder --disable-rofiles-fuse --install-deps-from=flathub --keep-build-dirs \
             --stop-at=template-check flatpak_app build-aux/io.github.example.TemplateCheck.Devel.json
           flatpak build-finish --share=network flatpak_app
           echo "cd .. && cargo fmt --all -- --check && cargo clippy --all-targets -- -D warnings" | \
@@ -343,7 +409,9 @@ jobs:
     needs:
       - pre-commit-all
       - test
+      - changes
       - template-check
+      - template-clippy
       - conventional-commits
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -353,16 +421,22 @@ jobs:
         env:
           NEEDS: ${{ toJSON(needs) }}
           EVENT: ${{ github.event_name }}
+          TEMPLATE: ${{ needs.changes.outputs.template }}
         run: |
           set -euo pipefail
-          failed="$(jq -r --arg event "${EVENT}" '
+          # Skipped by design, and therefore fine: conventional-commits on a push, and the two
+          # template jobs when the changes job found no template input changed. Anything else
+          # that is not a success (including a skip because changes itself failed) fails.
+          failed="$(jq -r --arg event "${EVENT}" --arg template "${TEMPLATE}" '
             to_entries[]
             | select(.value.result != "success")
             | select(
                 (
-                  $event == "push"
-                  and .key == "conventional-commits"
-                  and .value.result == "skipped"
+                  .value.result == "skipped"
+                  and (
+                    ($event == "push" and .key == "conventional-commits")
+                    or ($template == "false" and (.key == "template-check" or .key == "template-clippy"))
+                  )
                 ) | not
               )
             | "\(.key): \(.value.result)"
