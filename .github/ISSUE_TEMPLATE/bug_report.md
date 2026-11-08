@@ -5,35 +5,56 @@ title: "[Bug]: "
 labels: ["bug"]
 assignees: []
 ---
+## Step 1: Are you in the right place?
 
-## Checklist
+* [ ] I have checked that there are no duplicate active or recent issues (bugs, questions, or
+  feature requests) describing this problem.
+* [ ] I am using the latest released version of gtk-rs-skills (or have tested on the main/default
+  branch).
+* [ ] This is not a security vulnerability (those go through the private process in SECURITY.md).
 
-- [ ] I found no duplicate active or recent issue.
-- [ ] I reproduced this with the latest release or `main`.
+## Step 2: Describe your environment
 
-## Environment
+* Plugin version or commit: `?`
+* Agent and version (Claude Code, Codex, ...): `?`
+* gtk4 / libadwaita crate versions (`Cargo.toml`): `?`
+* GTK / libadwaita system or Flatpak runtime versions: `?`
+* Operating system and version: `?`
 
-- Plugin version or commit: `?`
-- Agent and version (Claude Code, Codex, ...): `?`
-- gtk4 / libadwaita crate versions (`Cargo.toml`): `?`
-- GTK / libadwaita system or Flatpak runtime versions: `?`
-- Operating system and version: `?`
+## Step 3: Describe the problem
 
-## What is wrong
-
-<!-- Which skill, reference file or template file, and what it says or does. -->
-
-## Steps to reproduce
+### Steps to reproduce
 
 1. ---
 2. ---
 3. ---
 
-## Observed behavior
+### Observed results
 
-<!-- Include compiler errors, GTK warnings, command output or screenshots. -->
+<!-- What happened? This could be a description, error message, or log output. -->
 
-## Expected behavior
+*
 
-<!-- What the guidance or template should say or do instead, with a source if you have one
-(docs.rs, GTK/libadwaita docs, upstream app code). -->
+### Expected results
+
+<!-- What did you expect to happen? -->
+
+*
+
+### Relevant code, configuration, or data
+
+<!-- Paste the smallest possible code or config snippet that reproduces the issue. -->
+
+```rust
+// Example snippet (replace with your own)
+```
+
+### Error / log output
+
+<!-- If you are getting an error, paste the output here. -->
+
+```text
+<paste logs or error messages here>
+```
+
+<!-- Adding screenshots, screen recordings, or additional context is always helpful. -->

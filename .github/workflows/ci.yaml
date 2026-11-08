@@ -16,8 +16,12 @@ on:
     - cron: "23 5 * * 1"
 
 concurrency:
-  group: "${{ github.workflow }} @ ${{ github.event.pull_request.head.label || github.head_ref || github.ref }}"
-  cancel-in-progress: true
+  # A pull request's runs share one group per branch, so a newer push cancels the older run. Every
+  # other run (a push to main, a dispatch) gets a group of its own: GitHub keeps only one pending
+  # run per group, so a shared group would let a newer push replace a queued run, and a release
+  # gate needs CI to have passed on that exact commit.
+  group: "${{ github.workflow }} @ ${{ github.event_name == 'pull_request' && github.event.pull_request.head.label || github.run_id }}"
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 # Every job reads the repository and nothing else, unless it says otherwise below.
 permissions:
@@ -33,11 +37,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
+      # The warm-up's python_version (3.x): its resolved version is part of the cache key, so any
+      # other version would never restore the warm-up's entry. The hooks need no specific Python;
+      # mypy checks against 3.12 (mypy.ini), and the test job runs on 3.12, the supported floor.
       - name: Set up Python
+        id: python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
         with:
-          python-version: "3.12"
+          python-version: "3.x"
 
       # The node hooks (markdownlint-cli2, prettier-yaml) build their environments on the
       # runner's node rather than downloading one.
@@ -54,7 +64,7 @@ jobs:
         uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/pre-commit
-          key: pre-commit|${{ runner.os }}|${{ hashFiles('.pre-commit-config.yaml') }}
+          key: pre-commit|${{ runner.os }}|${{ steps.python.outputs.python-version }}|${{ hashFiles('.pre-commit-config.yaml') }}
 
       - name: Run every pre-commit hook on every file
         run: pre-commit run --all-files --show-diff-on-failure
@@ -69,10 +79,13 @@ jobs:
 
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up Python
         uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
@@ -103,6 +116,7 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Check whether the template inputs changed
         id: filter
@@ -139,6 +153,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Generate the sample app
         run: |
@@ -168,6 +184,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Generate the sample app
         run: |
@@ -192,6 +210,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -204,9 +223,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run actionlint via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/actionlint@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/actionlint@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -217,6 +237,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -229,10 +250,11 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       # The action's default list plus the hooks this repository adds to pre-commit-hooks.
       - name: Run pre-commit hooks + reviewdog diff
-        uses: leinardi/gha-pre-commit-reviewdog-actions/pre-commit-hooks@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/pre-commit-hooks@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -253,6 +275,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -265,9 +288,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run markdownlint-cli2 via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/markdownlint-cli2@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/markdownlint-cli2@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -278,6 +302,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -290,9 +315,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run mypy via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/mypy@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/mypy@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -303,6 +329,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -315,9 +342,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run ruff via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/ruff@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/ruff@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -328,6 +356,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -340,9 +369,10 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run shellcheck via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/shellcheck@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/shellcheck@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
@@ -353,6 +383,7 @@ jobs:
     # neither a pull request to comment on nor a base ref to diff against.
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     # reviewdog posts its findings as a pull request review (-reporter=github-pr-review in every
     # action this workflow uses, at the pinned commit), which needs pull-requests: write. It
     # creates no check runs, so checks: write is not needed.
@@ -365,16 +396,17 @@ jobs:
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Run yamllint via pre-commit + reviewdog
-        uses: leinardi/gha-pre-commit-reviewdog-actions/yamllint@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/yamllint@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha }}
           to-ref: ${{ github.event.pull_request.head.sha }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
 
   conventional-commits:
-    # commitizen derives the release version from the commit types since the last tag, so a
+    # svu derives the release version from the commit types since the last tag, so a
     # commit nobody can classify is a release nobody can version. The local commit-msg hook only
     # runs where `make pre-commit-install` was run; this job is the check that no commit skips.
     # It runs the repository's own conventional-pre-commit hook, so --force-scope applies here
@@ -388,15 +420,17 @@ jobs:
     # already checked on their pull request, so it is skipped there.
     if: github.event_name != 'push'
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     steps:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Validate the commit messages
-        uses: leinardi/gha-pre-commit-reviewdog-actions/conventional-commits@007919a45a04b0c52dfbb46732019dc4831fc03c # v1.0.3
+        uses: leinardi/gha-pre-commit-reviewdog-actions/conventional-commits@77e6e852b85ad28aa05bba731fa11be3305a5dac # v2.0.0
         with:
           from-ref: ${{ github.event.pull_request.base.sha || 'origin/main' }}
           to-ref: ${{ github.event.pull_request.head.sha || 'HEAD' }}

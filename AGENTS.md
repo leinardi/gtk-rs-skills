@@ -59,8 +59,9 @@ build, run or pass validation.
 | `skills/gtk-rs-development/references/*.md` | Topic references loaded on demand. |
 | `skills/gtk-rs-new-app/assets/template/` | The project template; `{{TOKENS}}` are substituted by the generator. Exempt from YAML/Markdown linters and the licence-header check. |
 | `skills/gtk-rs-new-app/scripts/new_app.py` | The generator; run as `python3 -I`, standard library only. |
-| `tests/` | pytest suite for the generator. |
+| `tests/` | pytest suite for the generator and for `scripts/release_bump.py`. |
 | `.mk/test.mk` | Local make targets (`test`, `template-generate`, `template-check`, `template-flatpak`). |
+| `.mk/release.mk`, `scripts/release_bump.py` | `make release-bump VERSION=X.Y.Z`: writes the version into `.claude-plugin/plugin.json` for the Release workflow. |
 | `.mk/help.mk`, `.mk/pre-commit.mk`, `scripts/bootstrap-mk-common.sh` | Fetched from `leinardi/make-common`; change them upstream. |
 
 ## Commands
@@ -78,6 +79,18 @@ Verifying snippets: copy the generated app (`make template-generate`, then work 
 `$TMPDIR/gtk-rs-skills-template-check`), put each snippet in a module with the minimum
 scaffolding, and run `cargo check` / `cargo clippy`. Never edit the template while experimenting.
 
+## Validation matrix
+
+Run before considering an edit done. `make check` applies to every row.
+
+| You edited | Run |
+| --- | --- |
+| `skills/**` guidance or references | compile every Rust/Blueprint snippet you touched against the pinned crates (rule 1) |
+| `skills/gtk-rs-new-app/**` (template, generator) | `make test`, `make template-check` |
+| `tests/**`, `scripts/release_bump.py`, `.mk/release.mk` | `make test`; for the bump, `make release-bump VERSION=<higher>` shows a one-line diff (then restore the file) |
+| `.github/workflows/**`, `.github/dependabot.yml` | `pre-commit run actionlint --all-files`; reason through each trigger the workflow has |
+| `**/*.md` | `make check` (markdownlint); prose wrapped at 100 columns |
+
 ## Commits
 
 [Conventional Commits 1.0.0](https://www.conventionalcommits.org/en/v1.0.0/) with a scope, enforced
@@ -85,14 +98,18 @@ by `conventional-pre-commit` (`commit-msg`) and the `conventional-commits` CI jo
 `development`, `new-app`, `template`, `review`, `references`, `plugin`, `docs`, `ci`, `deps`,
 `make`, `tests`.
 
-The type decides the release (commitizen, `.cz.toml`): `feat` → minor, `fix`/`perf`/`refactor` →
-patch, `!` or `BREAKING CHANGE:` → major; `build`, `chore`, `ci`, `docs`, `revert`, `style` and
-`test` bump nothing. What ships is the skills, references and template, so:
+The type decides the release (svu, through the Release workflow): `feat` → minor, `fix` → patch,
+`!` or `BREAKING CHANGE:` → major, even from a 0.x version; every other type (`build`, `chore`,
+`ci`, `docs`, `perf`, `refactor`, `revert`, `style`, `test`) bumps nothing. What ships is the
+skills, references and template, so:
 
 - new guidance, a new reference or skill, a new template capability → `feat`;
-- wrong guidance, a snippet that does not compile, a broken template → `fix`;
-- CI, tests, repo tooling, README/CONTRIBUTING → `ci`, `test`, `build`, `chore` or `docs` — never
-  `perf` or `refactor`, which would cut a release for something users do not receive.
+- wrong guidance, a snippet that does not compile, a broken template → `fix`, even when it is a
+  performance improvement, a refactor or a revert;
+- CI, tests, repo tooling, README/CONTRIBUTING → `ci`, `test`, `build`, `chore` or `docs`.
+
+svu matches `feat`/`fix` anywhere in the subject (`prefix:` counts as `fix:`), so avoid a word
+ending in `feat` or `fix` directly before a colon in other subjects.
 
 ## Releases
 
