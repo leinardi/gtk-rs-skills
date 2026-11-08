@@ -45,7 +45,7 @@ endif
 UV_RUN = $(UV) run --no-project --with-requirements $(REPO_ROOT)/requirements-dev.txt python
 
 .PHONY: dev-deps
-dev-deps: ## Install the pinned Python development dependencies (pytest, commitizen)
+dev-deps: ## Install the pinned Python development dependencies (pytest)
 ifneq ($(strip $(UV)),)
 	@$(UV_RUN) -c 'import pytest'
 	@printf 'dev dependencies ready in uv'"'"'s cache; make test uses them automatically.\n'

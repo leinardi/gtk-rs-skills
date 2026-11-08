@@ -1,0 +1,37 @@
+#
+# MIT License
+#
+# Copyright (c) 2026 Roberto Leinardi
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+#
+
+ifndef MK_LOCAL_RELEASE_INCLUDED
+MK_LOCAL_RELEASE_INCLUDED := 1
+
+PYTHON ?= python3
+
+# Called by the Release workflow (gh-reusable-workflows' version-bump-pr) with the version it
+# resolved; it writes the file and never commits. scripts/release_bump.py checks the version.
+.PHONY: release-bump
+release-bump: ## Write VERSION (X.Y.Z) into .claude-plugin/plugin.json, e.g. make release-bump VERSION=1.2.0
+	@test -n "$(VERSION)" || { echo "usage: make release-bump VERSION=X.Y.Z" >&2; exit 2; }
+	@$(PYTHON) -I $(REPO_ROOT)/scripts/release_bump.py "$(VERSION)" $(REPO_ROOT)/.claude-plugin/plugin.json
+
+endif

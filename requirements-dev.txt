@@ -6,5 +6,3 @@
 #
 # Install with: make dev-deps
 pytest==9.2.0
-# Derives the next release version from the Conventional Commits (.cz.toml, release.yaml).
-commitizen==4.19.3
