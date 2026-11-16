@@ -69,20 +69,21 @@ number or behavioural claim:
 
 ## Gates
 
-Do not re-run the repository's gates (`make check`, `make test`,
-`make template-check`, `make template-flatpak`). The implementer is expected to
-run them and CI runs them again, but do not assume either happened: report the
+Do not re-run the repository's gates (`make check`, `make test`, `make
+template-check`, `make template-flatpak`). The implementer is expected to run
+them and CI runs them again, but do not assume either happened: report the
 verification evidence you actually have (under adversarial-review-loop,
 `verification.txt` when supplied, which is the implementer's claim and not
-proof; when invoked directly, the CI status or gate output in the PR or
-session) and what is missing, such as a change under `skills/gtk-rs-new-app/`
-with no `make template-check` (or `make template-flatpak`) result, which a host
-may be unable to run. Never say that a check you did not see passed. Judge
-whether the change's tests prove it: a behaviour change needs a test that fails
-on the old code. When invoked directly, one focused test (one snippet through
-`cargo check`, or `blueprint-compiler compile`) may be run to confirm a single
-suspected finding, never a full suite or gate. A candidate that is neither
-reproduced nor traced end to end is dropped.
+proof; when invoked directly, the CI status or gate output in the PR or session)
+and what is missing, such as a change under `skills/gtk-rs-new-app/` with no
+`make template-check` (or `make template-flatpak`) result, which a host may be
+unable to run. Judge what is missing against `AGENTS.md`'s *Validation matrix*:
+every changed path owes the checks its row names. Never say that a check you did
+not see passed. Judge whether the change's tests prove it: a behaviour change
+needs a test that fails on the old code. When invoked directly, one focused test
+(one snippet through `cargo check`, or `blueprint-compiler compile`) may be run
+to confirm a single suspected finding, never a full suite or gate. A candidate
+that is neither reproduced nor traced end to end is dropped.
 
 ## Report
 
