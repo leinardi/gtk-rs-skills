@@ -17,40 +17,18 @@ Assume the change teaches an agent something wrong until proven otherwise. Find
 the snippet that does not compile, the API that does not exist at the pinned
 version, the claim no source supports, or the template edit that produces an app
 which does not build, run or validate. Do not praise or restyle. A review with
-no findings is credible only after real attempts to break the change.
+no findings is credible only after real attempts to break the change. Read
+`AGENTS.md` first: its rules are review checks. Then note the baseline versions
+in `skills/gtk-rs-development/SKILL.md` and the template's `Cargo.toml`.
 
-Copy this checklist and tick items as you go:
+## Scope
 
-```text
-Review progress:
-- [ ] 1. Diff and intent established (default scope if none given)
-- [ ] 2. AGENTS.md read; pinned versions noted
-- [ ] 3. Code claims verified (compile, crate source, docs)
-- [ ] 4. Consistency passes run
-- [ ] 5. Gates run
-- [ ] 6. Report written
-```
+When invoked directly: review the scope the user gives (`gh pr view <n>`, then
+`gh pr diff <n>` for a PR); with none, the uncommitted work (`git diff HEAD`
+plus every untracked file); on a clean tree, `git diff main...HEAD`. Never
+review from memory or from the user's description alone: read the actual diff.
 
-## 1. Establish the diff
-
-Never review from memory or from the user's description alone. With no scope
-given, review the uncommitted work; if the tree is clean, review the branch
-against `main`.
-
-| User intent | Command |
-| --- | --- |
-| uncommitted changes | `git status --short`, then `git diff HEAD`; read every untracked file too |
-| staged changes only | `git diff --staged` |
-| branch, "this PR", "ready to merge" | `git diff main...HEAD` |
-| commit range | `git diff <base>..<head>` |
-| GitHub PR number | `gh pr view <n>`, then `gh pr diff <n>` |
-
-## 2. Load project authority
-
-Read `AGENTS.md`: its rules are review checks. Note the baseline versions in
-`skills/gtk-rs-development/SKILL.md` and the template's `Cargo.toml`.
-
-## 3. Verify code claims
+## Verify code claims
 
 For every added or changed snippet, API name, signature, feature gate, version
 number or behavioural claim:
@@ -69,7 +47,7 @@ number or behavioural claim:
   the installed libadwaita/GTK docs or stylesheet, or run the generated app
   under `xvfb-run`. Unverifiable claims must carry `(verify)`.
 
-## 4. Consistency passes
+## Consistency passes
 
 - **Template ↔ references**: any build, config, resource, schema, Flatpak or CI
   statement in `project-layout-and-build.md`, `packaging-and-ci.md`,
@@ -89,13 +67,24 @@ number or behavioural claim:
 - **Commit types**: `feat`/`fix` only for what ships (skills, references,
   template); tooling and CI never use `perf`/`refactor`.
 
-## 5. Gates
+## Gates
 
-Run `make check` and `make test`. If anything under
-`skills/gtk-rs-new-app/` changed, run `make template-check` (or
-`make template-flatpak`); say so explicitly when the host cannot run it.
+Do not re-run the repository's gates (`make check`, `make test`,
+`make template-check`, `make template-flatpak`). The implementer is expected to
+run them and CI runs them again, but do not assume either happened: report the
+verification evidence you actually have (under adversarial-review-loop,
+`verification.txt` when supplied, which is the implementer's claim and not
+proof; when invoked directly, the CI status or gate output in the PR or
+session) and what is missing, such as a change under `skills/gtk-rs-new-app/`
+with no `make template-check` (or `make template-flatpak`) result, which a host
+may be unable to run. Never say that a check you did not see passed. Judge
+whether the change's tests prove it: a behaviour change needs a test that fails
+on the old code. When invoked directly, one focused test (one snippet through
+`cargo check`, or `blueprint-compiler compile`) may be run to confirm a single
+suspected finding, never a full suite or gate. A candidate that is neither
+reproduced nor traced end to end is dropped.
 
-## 6. Report
+## Report
 
 Rank findings most severe first:
 
@@ -108,4 +97,4 @@ Fix: <the change>
 Blocker: guidance that does not compile or a template that breaks the generated
 app. Major: wrong or unsupported claim, inconsistency with the template,
 untested template path. Minor: unclear wording, missing cross-link. End with
-what was verified and what could not be.
+a verdict and one line: `Verification evidence: seen … / missing …`.
